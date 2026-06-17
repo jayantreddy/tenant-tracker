@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -37,14 +37,8 @@ const COLORS = {
 };
 
 const PROPERTY_COLORS = [
-  "#4F46E5",
-  "#059669",
-  "#0891B2",
-  "#9333EA",
-  "#DC2626",
-  "#D97706",
-  "#DB2777",
-  "#0D9488"
+  "#4F46E5", "#059669", "#0891B2", "#9333EA",
+  "#DC2626", "#D97706", "#DB2777", "#0D9488"
 ];
 
 const CURRENCIES = [
@@ -62,21 +56,21 @@ const COUNTRY_OPTIONS = [
 ];
 
 const REPAIR_CATEGORIES = [
-  "Plumbing",
-  "Electrician",
-  "Security",
-  "BBMP",
-  "BESCOM",
-  "BWSSB",
-  "Other"
+  "Plumbing", "Electrician", "Security", "BBMP", "BESCOM", "BWSSB", "Other"
 ];
 
 const MAINTENANCE_CATEGORIES = [
-  "Electricity bill",
-  "Water bill",
-  "Regular repair",
+  "Electricity bill", "Water bill", "Regular repair", "Salary", "Water tanker", "General"
+];
+
+const RECURRING_CATEGORIES = [
+  "HOA",
+  "Loan payment",
   "Salary",
-  "Water tanker",
+  "Property tax",
+  "Insurance",
+  "Pest control - Azura",
+  "Warranty - AHS",
   "General"
 ];
 
@@ -93,7 +87,13 @@ const CATEGORY_COLORS = {
   "Regular repair": "#9333EA",
   Salary: "#059669",
   "Water tanker": "#0D9488",
-  General: "#6B7280"
+  General: "#6B7280",
+  HOA: "#4F46E5",
+  "Loan payment": "#DC2626",
+  "Property tax": "#9333EA",
+  Insurance: "#0891B2",
+  "Pest control - Azura": "#D97706",
+  "Warranty - AHS": "#0D9488"
 };
 
 const INITIAL_BUILDINGS = [
@@ -131,6 +131,10 @@ function makeMonthKey(month, year) {
   return `${year}-${String(month + 1).padStart(2, "0")}`;
 }
 
+function monthIndex(month, year) {
+  return year * 12 + month;
+}
+
 function getCurrency(code) {
   return CURRENCIES.find((currency) => currency.code === code) || CURRENCIES[0];
 }
@@ -139,7 +143,9 @@ function formatMoneyByCurrency(value, currencyCode) {
   const amount = Number(value) || 0;
   const currency = getCurrency(currencyCode);
   const sign = amount < 0 ? "-" : "";
-  return `${sign}${currency.symbol}${Math.abs(amount).toLocaleString()}`;
+  return `${sign}${currency.symbol}${Math.abs(amount).toLocaleString(undefined, {
+    maximumFractionDigits: 2
+  })}`;
 }
 
 function getPortfolioLabel(currencyCode) {
@@ -179,6 +185,27 @@ function generateTenants() {
       buildingId: building.id
     };
   });
+}
+
+function useStoredState(key, initialValue) {
+  const [value, setValue] = useState(() => {
+    try {
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [key, value]);
+
+  return [value, setValue];
 }
 
 const inputStyle = {
@@ -224,11 +251,7 @@ function buttonStyle(type = "default") {
   }
 
   if (type === "green") {
-    return {
-      ...base,
-      color: "#FFFFFF",
-      background: COLORS.green
-    };
+    return { ...base, color: "#FFFFFF", background: COLORS.green };
   }
 
   if (type === "danger") {
@@ -332,7 +355,10 @@ function Badge({ status }) {
     partial: { label: "Partial", color: COLORS.amber, bg: COLORS.amberLight },
     unpaid: { label: "Unpaid", color: COLORS.red, bg: COLORS.redLight },
     open: { label: "Open", color: COLORS.amber, bg: COLORS.amberLight },
-    resolved: { label: "Resolved", color: COLORS.green, bg: COLORS.greenLight }
+    resolved: { label: "Resolved", color: COLORS.green, bg: COLORS.greenLight },
+    monthly: { label: "Monthly", color: COLORS.green, bg: COLORS.greenLight },
+    yearly: { label: "Yearly", color: COLORS.blue, bg: COLORS.blueLight },
+    inactive: { label: "Inactive", color: COLORS.red, bg: COLORS.redLight }
   };
 
   const item = config[status] || config.unpaid;
@@ -417,7 +443,7 @@ function Modal({ title, children, onClose }) {
     >
       <div
         style={{
-          width: 560,
+          width: 580,
           maxWidth: "100%",
           maxHeight: "92vh",
           overflow: "auto",
@@ -687,16 +713,19 @@ function ChangePasswordModal({ user, onClose }) {
 }
 
 function Dashboard({ currentUser, onLogout }) {
-  const [tenants, setTenants] = useState(generateTenants);
-  const [payments, setPayments] = useState({});
-  const [repairs, setRepairs] = useState({});
-  const [maintenance, setMaintenance] = useState({});
-  const [buildings, setBuildings] = useState(INITIAL_BUILDINGS);
+  const [tenants, setTenants] = useStoredState("manne_tenants_v2", generateTenants());
+  const [payments, setPayments] = useStoredState("manne_payments_v2", {});
+  const [repairs, setRepairs] = useStoredState("manne_repairs_v2", {});
+  const [maintenance, setMaintenance] = useStoredState("manne_maintenance_v2", {});
+  const [recurring, setRecurring] = useStoredState("manne_recurring_v1", []);
+  const [buildings, setBuildings] = useStoredState("manne_buildings_v2", INITIAL_BUILDINGS);
+
   const [propertyDocs, setPropertyDocs] = useState({});
   const [tenantDocs, setTenantDocs] = useState({});
   const [view, setView] = useState("dashboard");
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
+  const [yearlyReportYear, setYearlyReportYear] = useState(CURRENT_YEAR);
   const [statusFilter, setStatusFilter] = useState("all");
   const [buildingFilter, setBuildingFilter] = useState(0);
   const [search, setSearch] = useState("");
@@ -720,6 +749,21 @@ function Dashboard({ currentUser, onLogout }) {
     docs: []
   });
 
+  const [recurringForm, setRecurringForm] = useState({
+    buildingId: "",
+    category: "HOA",
+    text: "",
+    amount: "",
+    frequency: "monthly",
+    startMonth: CURRENT_MONTH,
+    startYear: CURRENT_YEAR,
+    coverageMonths: 12,
+    endMonth: "",
+    endYear: "",
+    active: true,
+    docs: []
+  });
+
   const monthKey = makeMonthKey(selectedMonth, selectedYear);
   const monthRepairs = repairs[monthKey] || [];
   const monthMaintenance = maintenance[monthKey] || [];
@@ -738,8 +782,9 @@ function Dashboard({ currentUser, onLogout }) {
     return formatMoneyByCurrency(value, currencyCode);
   }
 
-  function getPayment(tenantId) {
-    return payments[monthKey]?.[tenantId] || {
+  function getPayment(tenantId, month = selectedMonth, year = selectedYear) {
+    const key = makeMonthKey(month, year);
+    return payments[key]?.[tenantId] || {
       status: "unpaid",
       amount: 0,
       date: ""
@@ -748,7 +793,6 @@ function Dashboard({ currentUser, onLogout }) {
 
   function setPayment(tenantId, status, amount, date) {
     const tenant = tenants.find((item) => item.id === tenantId);
-
     if (!tenant) return;
 
     const value =
@@ -838,10 +882,7 @@ function Dashboard({ currentUser, onLogout }) {
       ...previous,
       [monthKey]: (previous[monthKey] || []).map((repair) =>
         repair.id === repairId
-          ? {
-              ...repair,
-              status: repair.status === "open" ? "resolved" : "open"
-            }
+          ? { ...repair, status: repair.status === "open" ? "resolved" : "open" }
           : repair
       )
     }));
@@ -879,6 +920,176 @@ function Dashboard({ currentUser, onLogout }) {
       ...previous,
       [monthKey]: (previous[monthKey] || []).filter((item) => item.id !== itemId)
     }));
+  }
+
+  function addRecurring() {
+    if (!recurringForm.buildingId || !recurringForm.text.trim()) return;
+
+    const amount = Number(recurringForm.amount) || 0;
+    if (amount <= 0) {
+      alert("Please enter an amount.");
+      return;
+    }
+
+    const newItem = {
+      id: Date.now(),
+      buildingId: Number(recurringForm.buildingId),
+      category: recurringForm.category,
+      text: recurringForm.text.trim(),
+      amount,
+      frequency: recurringForm.frequency,
+      startMonth: Number(recurringForm.startMonth),
+      startYear: Number(recurringForm.startYear),
+      coverageMonths: Number(recurringForm.coverageMonths) || 12,
+      endMonth: recurringForm.endMonth === "" ? "" : Number(recurringForm.endMonth),
+      endYear: recurringForm.endYear === "" ? "" : Number(recurringForm.endYear),
+      active: true,
+      docs: recurringForm.docs
+    };
+
+    setRecurring((previous) => [...previous, newItem]);
+
+    setRecurringForm({
+      buildingId: "",
+      category: "HOA",
+      text: "",
+      amount: "",
+      frequency: "monthly",
+      startMonth: CURRENT_MONTH,
+      startYear: CURRENT_YEAR,
+      coverageMonths: 12,
+      endMonth: "",
+      endYear: "",
+      active: true,
+      docs: []
+    });
+  }
+
+  function removeRecurring(id) {
+    if (!window.confirm("Remove this recurring expense?")) return;
+    setRecurring((previous) => previous.filter((item) => item.id !== id));
+  }
+
+  function toggleRecurring(id) {
+    setRecurring((previous) =>
+      previous.map((item) =>
+        item.id === id ? { ...item, active: !item.active } : item
+      )
+    );
+  }
+
+  function recurringMonthlyAmount(item, month, year) {
+    if (!item.active) return 0;
+
+    const currentIndex = monthIndex(month, year);
+    const startIndex = monthIndex(Number(item.startMonth), Number(item.startYear));
+
+    if (item.frequency === "monthly") {
+      if (currentIndex < startIndex) return 0;
+
+      if (item.endMonth !== "" && item.endYear !== "") {
+        const endIndex = monthIndex(Number(item.endMonth), Number(item.endYear));
+        if (currentIndex > endIndex) return 0;
+      }
+
+      return Number(item.amount) || 0;
+    }
+
+    const coverageMonths = Number(item.coverageMonths) || 12;
+    const finalIndex = startIndex + coverageMonths - 1;
+
+    if (currentIndex < startIndex || currentIndex > finalIndex) return 0;
+
+    return (Number(item.amount) || 0) / coverageMonths;
+  }
+
+  function getRecurringExpense(buildingId, month = selectedMonth, year = selectedYear) {
+    return recurring
+      .filter((item) => item.buildingId === Number(buildingId))
+      .reduce((sum, item) => sum + recurringMonthlyAmount(item, month, year), 0);
+  }
+
+  function getTenantName(tenantId) {
+    if (!tenantId) return "No tenant selected";
+    const tenant = tenants.find((item) => item.id === Number(tenantId));
+    return tenant ? `Unit ${tenant.unit} - ${tenant.name}` : "Tenant not found";
+  }
+
+  function getPropertyExpense(buildingId, month = selectedMonth, year = selectedYear) {
+    const key = makeMonthKey(month, year);
+    const repairExpense = (repairs[key] || [])
+      .filter((repair) => repair.buildingId === Number(buildingId))
+      .reduce((sum, repair) => sum + Number(repair.amount || 0), 0);
+
+    const maintenanceExpense = (maintenance[key] || [])
+      .filter((item) => item.buildingId === Number(buildingId))
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    const recurringExpense = getRecurringExpense(buildingId, month, year);
+
+    return repairExpense + maintenanceExpense + recurringExpense;
+  }
+
+  function getCurrencySummary(currencyCode, month = selectedMonth, year = selectedYear) {
+    const key = makeMonthKey(month, year);
+
+    const currencyBuildings = buildings.filter(
+      (building) => building.currency === currencyCode
+    );
+
+    const currencyBuildingIds = currencyBuildings.map((building) => building.id);
+
+    const currencyTenants = tenants.filter((tenant) =>
+      currencyBuildingIds.includes(tenant.buildingId)
+    );
+
+    const expected = currencyTenants.reduce(
+      (sum, tenant) => sum + Number(tenant.rent || 0),
+      0
+    );
+
+    const collected = currencyTenants.reduce((sum, tenant) => {
+      const payment = getPayment(tenant.id, month, year);
+
+      if (payment.status === "paid") {
+        return sum + Number(tenant.rent || 0);
+      }
+
+      if (payment.status === "partial") {
+        return sum + Number(payment.amount || 0);
+      }
+
+      return sum;
+    }, 0);
+
+    const repairExpense = (repairs[key] || [])
+      .filter((repair) => currencyBuildingIds.includes(repair.buildingId))
+      .reduce((sum, repair) => sum + Number(repair.amount || 0), 0);
+
+    const maintenanceExpense = (maintenance[key] || [])
+      .filter((item) => currencyBuildingIds.includes(item.buildingId))
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    const recurringExpense = recurring
+      .filter((item) => currencyBuildingIds.includes(item.buildingId))
+      .reduce((sum, item) => sum + recurringMonthlyAmount(item, month, year), 0);
+
+    const expenses = repairExpense + maintenanceExpense + recurringExpense;
+    const net = collected - expenses;
+    const progress = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+
+    return {
+      currencyCode,
+      buildings: currencyBuildings,
+      expected,
+      collected,
+      repairExpense,
+      maintenanceExpense,
+      recurringExpense,
+      expenses,
+      net,
+      progress
+    };
   }
 
   function exportCSV() {
@@ -922,79 +1133,6 @@ function Dashboard({ currentUser, onLogout }) {
     link.click();
   }
 
-  function getTenantName(tenantId) {
-    if (!tenantId) return "No tenant selected";
-    const tenant = tenants.find((item) => item.id === Number(tenantId));
-    return tenant ? `Unit ${tenant.unit} - ${tenant.name}` : "Tenant not found";
-  }
-
-  function getPropertyExpense(buildingId) {
-    const repairExpense = monthRepairs
-      .filter((repair) => repair.buildingId === buildingId)
-      .reduce((sum, repair) => sum + Number(repair.amount || 0), 0);
-
-    const maintenanceExpense = monthMaintenance
-      .filter((item) => item.buildingId === buildingId)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-    return repairExpense + maintenanceExpense;
-  }
-
-  function getCurrencySummary(currencyCode) {
-    const currencyBuildings = buildings.filter(
-      (building) => building.currency === currencyCode
-    );
-
-    const currencyBuildingIds = currencyBuildings.map((building) => building.id);
-
-    const currencyTenants = tenants.filter((tenant) =>
-      currencyBuildingIds.includes(tenant.buildingId)
-    );
-
-    const expected = currencyTenants.reduce(
-      (sum, tenant) => sum + Number(tenant.rent || 0),
-      0
-    );
-
-    const collected = currencyTenants.reduce((sum, tenant) => {
-      const payment = getPayment(tenant.id);
-
-      if (payment.status === "paid") {
-        return sum + Number(tenant.rent || 0);
-      }
-
-      if (payment.status === "partial") {
-        return sum + Number(payment.amount || 0);
-      }
-
-      return sum;
-    }, 0);
-
-    const repairExpense = monthRepairs
-      .filter((repair) => currencyBuildingIds.includes(repair.buildingId))
-      .reduce((sum, repair) => sum + Number(repair.amount || 0), 0);
-
-    const maintenanceExpense = monthMaintenance
-      .filter((item) => currencyBuildingIds.includes(item.buildingId))
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-    const expenses = repairExpense + maintenanceExpense;
-    const net = collected - expenses;
-    const progress = expected > 0 ? Math.round((collected / expected) * 100) : 0;
-
-    return {
-      currencyCode,
-      buildings: currencyBuildings,
-      expected,
-      collected,
-      repairExpense,
-      maintenanceExpense,
-      expenses,
-      net,
-      progress
-    };
-  }
-
   const filteredTenants = tenants.filter((tenant) => {
     const payment = getPayment(tenant.id);
     const query = search.toLowerCase();
@@ -1023,10 +1161,10 @@ function Dashboard({ currentUser, onLogout }) {
       ? Math.round(((paidCount + partialCount * 0.5) / tenants.length) * 100)
       : 0;
 
-  const currencySummaries = Array.from(
-    new Set(buildings.map((building) => building.currency))
-  )
-    .map(getCurrencySummary)
+  const currencyCodes = Array.from(new Set(buildings.map((building) => building.currency)));
+
+  const currencySummaries = currencyCodes
+    .map((currencyCode) => getCurrencySummary(currencyCode))
     .filter((summary) => summary.buildings.length > 0);
 
   const repairSummaryByCurrency = currencySummaries.reduce((map, summary) => {
@@ -1036,6 +1174,11 @@ function Dashboard({ currentUser, onLogout }) {
 
   const maintenanceSummaryByCurrency = currencySummaries.reduce((map, summary) => {
     map[summary.currencyCode] = summary.maintenanceExpense;
+    return map;
+  }, {});
+
+  const recurringSummaryByCurrency = currencySummaries.reduce((map, summary) => {
+    map[summary.currencyCode] = summary.recurringExpense;
     return map;
   }, {});
 
@@ -1054,6 +1197,8 @@ function Dashboard({ currentUser, onLogout }) {
     ["tenants", "Tenants"],
     ["repairs", "Repairs"],
     ["maintenance", "Maintenance"],
+    ["recurring", "Recurring"],
+    ["yearly", "Yearly Report"],
     ["documents", "Documents"]
   ];
 
@@ -1289,35 +1434,51 @@ function Dashboard({ currentUser, onLogout }) {
               {navItems.find((item) => item[0] === view)?.[1]}
             </div>
             <div style={{ color: COLORS.muted, fontSize: 14, marginTop: 4 }}>
-              {tenants.length} units - {buildings.length} buildings -{" "}
-              {MONTHS[selectedMonth]} {selectedYear}
+              {tenants.length} units - {buildings.length} buildings
+              {view !== "yearly" && ` - ${MONTHS[selectedMonth]} ${selectedYear}`}
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <select
-              value={selectedMonth}
-              onChange={(event) => setSelectedMonth(Number(event.target.value))}
-              style={{ ...inputStyle, width: 150 }}
-            >
-              {MONTHS.map((month, index) => (
-                <option key={month} value={index}>
-                  {month}
-                </option>
-              ))}
-            </select>
+            {view === "yearly" ? (
+              <select
+                value={yearlyReportYear}
+                onChange={(event) => setYearlyReportYear(Number(event.target.value))}
+                style={{ ...inputStyle, width: 130 }}
+              >
+                {[CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2].map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <select
+                  value={selectedMonth}
+                  onChange={(event) => setSelectedMonth(Number(event.target.value))}
+                  style={{ ...inputStyle, width: 150 }}
+                >
+                  {MONTHS.map((month, index) => (
+                    <option key={month} value={index}>
+                      {month}
+                    </option>
+                  ))}
+                </select>
 
-            <select
-              value={selectedYear}
-              onChange={(event) => setSelectedYear(Number(event.target.value))}
-              style={{ ...inputStyle, width: 110 }}
-            >
-              {[CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1].map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
+                <select
+                  value={selectedYear}
+                  onChange={(event) => setSelectedYear(Number(event.target.value))}
+                  style={{ ...inputStyle, width: 110 }}
+                >
+                  {[CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2].map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
 
             <button onClick={exportCSV} style={buttonStyle("primary")}>
               Export CSV
@@ -1351,8 +1512,7 @@ function Dashboard({ currentUser, onLogout }) {
                           marginTop: 4
                         }}
                       >
-                        {summary.buildings.length} properties -{" "}
-                        {summary.currencyCode}
+                        {summary.buildings.length} properties - {summary.currencyCode}
                       </div>
                     </div>
 
@@ -1379,43 +1539,25 @@ function Dashboard({ currentUser, onLogout }) {
                   >
                     <MetricCard
                       label="Expected rent"
-                      value={formatMoneyByCurrency(
-                        summary.expected,
-                        summary.currencyCode
-                      )}
+                      value={formatMoneyByCurrency(summary.expected, summary.currencyCode)}
                     />
 
                     <MetricCard
                       label="Collected rent"
-                      value={formatMoneyByCurrency(
-                        summary.collected,
-                        summary.currencyCode
-                      )}
+                      value={formatMoneyByCurrency(summary.collected, summary.currencyCode)}
                       color={COLORS.green}
                     />
 
                     <MetricCard
                       label="Total expenses"
-                      value={formatMoneyByCurrency(
-                        summary.expenses,
-                        summary.currencyCode
-                      )}
+                      value={formatMoneyByCurrency(summary.expenses, summary.currencyCode)}
                       color={COLORS.red}
-                      subText={`Repairs ${formatMoneyByCurrency(
-                        summary.repairExpense,
-                        summary.currencyCode
-                      )} - Maintenance ${formatMoneyByCurrency(
-                        summary.maintenanceExpense,
-                        summary.currencyCode
-                      )}`}
+                      subText={`Repairs ${formatMoneyByCurrency(summary.repairExpense, summary.currencyCode)} - Maintenance ${formatMoneyByCurrency(summary.maintenanceExpense, summary.currencyCode)} - Recurring ${formatMoneyByCurrency(summary.recurringExpense, summary.currencyCode)}`}
                     />
 
                     <MetricCard
                       label="Net gain"
-                      value={formatMoneyByCurrency(
-                        summary.net,
-                        summary.currencyCode
-                      )}
+                      value={formatMoneyByCurrency(summary.net, summary.currencyCode)}
                       color={summary.net >= 0 ? COLORS.green : COLORS.red}
                       subText="Collected rent minus expenses"
                     />
@@ -1516,19 +1658,18 @@ function Dashboard({ currentUser, onLogout }) {
                   );
 
                   const expected = buildingTenants.reduce(
-                    (sum, tenant) => sum + tenant.rent,
+                    (sum, tenant) => sum + Number(tenant.rent || 0),
                     0
                   );
 
                   const collected = buildingTenants.reduce((sum, tenant) => {
                     const payment = getPayment(tenant.id);
-                    if (payment.status === "paid") return sum + tenant.rent;
-                    if (payment.status === "partial") {
-                      return sum + Number(payment.amount || 0);
-                    }
+                    if (payment.status === "paid") return sum + Number(tenant.rent || 0);
+                    if (payment.status === "partial") return sum + Number(payment.amount || 0);
                     return sum;
                   }, 0);
 
+                  const recurringExpense = getRecurringExpense(building.id);
                   const expenses = getPropertyExpense(building.id);
                   const net = collected - expenses;
                   const percent =
@@ -1650,16 +1791,20 @@ function Dashboard({ currentUser, onLogout }) {
                           </strong>
                         </span>
                         <span>
-                          Expenses:{" "}
+                          Recurring:{" "}
+                          <strong style={{ color: COLORS.amber }}>
+                            {formatMoney(recurringExpense, building.id)}
+                          </strong>
+                        </span>
+                        <span>
+                          Total expenses:{" "}
                           <strong style={{ color: COLORS.red }}>
                             {formatMoney(expenses, building.id)}
                           </strong>
                         </span>
                         <span>
                           Net:{" "}
-                          <strong
-                            style={{ color: net >= 0 ? COLORS.green : COLORS.red }}
-                          >
+                          <strong style={{ color: net >= 0 ? COLORS.green : COLORS.red }}>
                             {formatMoney(net, building.id)}
                           </strong>
                         </span>
@@ -2639,6 +2784,566 @@ function Dashboard({ currentUser, onLogout }) {
             </>
           )}
 
+          {view === "recurring" && (
+            <>
+              <Card>
+                <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 14 }}>
+                  Add recurring expense
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.4fr 1.3fr 1.5fr 1fr",
+                    gap: 10
+                  }}
+                >
+                  <select
+                    value={recurringForm.buildingId}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        buildingId: event.target.value
+                      }))
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="">Select property...</option>
+                    {buildings.map((building) => (
+                      <option key={building.id} value={building.id}>
+                        {building.name} - {building.currency}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={recurringForm.category}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        category: event.target.value
+                      }))
+                    }
+                    style={inputStyle}
+                  >
+                    {RECURRING_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    value={recurringForm.text}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        text: event.target.value
+                      }))
+                    }
+                    placeholder="Description..."
+                    style={inputStyle}
+                  />
+
+                  <input
+                    type="number"
+                    value={recurringForm.amount}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        amount: event.target.value
+                      }))
+                    }
+                    placeholder="Amount"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                    gap: 10,
+                    marginTop: 12
+                  }}
+                >
+                  <select
+                    value={recurringForm.frequency}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        frequency: event.target.value
+                      }))
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly spread by coverage months</option>
+                  </select>
+
+                  <select
+                    value={recurringForm.startMonth}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        startMonth: Number(event.target.value)
+                      }))
+                    }
+                    style={inputStyle}
+                  >
+                    {MONTHS.map((month, index) => (
+                      <option key={month} value={index}>
+                        Start {month}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={recurringForm.startYear}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        startYear: Number(event.target.value)
+                      }))
+                    }
+                    style={inputStyle}
+                  >
+                    {[CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2].map((year) => (
+                      <option key={year} value={year}>
+                        Start {year}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="number"
+                    min="1"
+                    value={recurringForm.coverageMonths}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        coverageMonths: event.target.value
+                      }))
+                    }
+                    placeholder="Coverage months"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 10,
+                    marginTop: 12
+                  }}
+                >
+                  <select
+                    value={recurringForm.endMonth}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        endMonth: event.target.value
+                      }))
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="">No end month for monthly expenses</option>
+                    {MONTHS.map((month, index) => (
+                      <option key={month} value={index}>
+                        End {month}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={recurringForm.endYear}
+                    onChange={(event) =>
+                      setRecurringForm((previous) => ({
+                        ...previous,
+                        endYear: event.target.value
+                      }))
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="">No end year for monthly expenses</option>
+                    {[CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2].map((year) => (
+                      <option key={year} value={year}>
+                        End {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 10 }}>
+                  Tip: For yearly insurance/tax, enter the full yearly amount and set coverage months to 12. Example: $2,400 starting February 2026 with 12 coverage months becomes $200 per month from February 2026 through January 2027.
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    marginTop: 12
+                  }}
+                >
+                  <label style={{ ...buttonStyle("blue"), display: "inline-block" }}>
+                    Attach document
+                    <input
+                      type="file"
+                      multiple
+                      style={{ display: "none" }}
+                      onChange={(event) => {
+                        const docs = filesToDocs(event.target.files);
+                        setRecurringForm((previous) => ({
+                          ...previous,
+                          docs: [...previous.docs, ...docs]
+                        }));
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+
+                  <button onClick={addRecurring} style={buttonStyle("primary")}>
+                    Add recurring
+                  </button>
+                </div>
+
+                {recurringForm.docs.length > 0 && (
+                  <div style={{ marginTop: 10, fontSize: 13, color: COLORS.muted }}>
+                    Attached: {recurringForm.docs.map((doc) => doc.name).join(", ")}
+                  </div>
+                )}
+              </Card>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                  gap: 18,
+                  marginBottom: 18
+                }}
+              >
+                {Object.entries(recurringSummaryByCurrency).map(([currencyCode, value]) => (
+                  <MetricCard
+                    key={currencyCode}
+                    label={`Recurring this month - ${currencyCode}`}
+                    value={formatMoneyByCurrency(value, currencyCode)}
+                    color={COLORS.red}
+                  />
+                ))}
+                <MetricCard label="Recurring items" value={recurring.length} />
+              </div>
+
+              <Card padding={0}>
+                {recurring.length === 0 && (
+                  <EmptyState
+                    title="No recurring expenses yet"
+                    text="Add HOA, loan payment, salary, tax, insurance, pest control, warranty, or general recurring expenses."
+                  />
+                )}
+
+                {recurring.map((item, index) => {
+                  const building = getBuilding(item.buildingId);
+                  const monthlyAmount = recurringMonthlyAmount(
+                    item,
+                    selectedMonth,
+                    selectedYear
+                  );
+                  const coverageMonths = Number(item.coverageMonths) || 12;
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        padding: 18,
+                        borderBottom:
+                          index < recurring.length - 1
+                            ? `1px solid ${COLORS.borderLight}`
+                            : "none",
+                        display: "flex",
+                        gap: 12,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        opacity: item.active ? 1 : 0.62
+                      }}
+                    >
+                      <span
+                        style={{
+                          background: CATEGORY_COLORS[item.category] || COLORS.muted,
+                          color: "#FFFFFF",
+                          borderRadius: 999,
+                          padding: "5px 10px",
+                          fontSize: 12,
+                          fontWeight: 900
+                        }}
+                      >
+                        {item.category}
+                      </span>
+
+                      <div style={{ flex: 1, minWidth: 260 }}>
+                        <div style={{ fontWeight: 900 }}>{item.text}</div>
+                        <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 4 }}>
+                          {building?.name} - {building?.currency} - Starts {MONTHS[item.startMonth]} {item.startYear}
+                          {item.frequency === "yearly"
+                            ? ` - Coverage ${coverageMonths} months`
+                            : item.endMonth !== "" && item.endYear !== ""
+                            ? ` - Ends ${MONTHS[item.endMonth]} ${item.endYear}`
+                            : " - No end date"}
+                        </div>
+
+                        {item.docs?.length > 0 && (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                            {item.docs.map((doc, docIndex) => (
+                              <a
+                                key={docIndex}
+                                href={doc.url}
+                                download={doc.name}
+                                style={{
+                                  color: COLORS.primary,
+                                  background: COLORS.primaryLight,
+                                  borderRadius: 999,
+                                  padding: "5px 10px",
+                                  textDecoration: "none",
+                                  fontSize: 12,
+                                  fontWeight: 800
+                                }}
+                              >
+                                File: {doc.name}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ color: COLORS.red, fontWeight: 950 }}>
+                          {formatMoneyByCurrency(Number(item.amount), building?.currency || "INR")}
+                        </div>
+                        <div style={{ color: COLORS.muted, fontSize: 12 }}>
+                          This month: {formatMoneyByCurrency(monthlyAmount, building?.currency || "INR")}
+                        </div>
+                      </div>
+
+                      <Badge status={item.active ? item.frequency : "inactive"} />
+
+                      <button onClick={() => toggleRecurring(item.id)} style={buttonStyle()}>
+                        {item.active ? "Deactivate" : "Activate"}
+                      </button>
+
+                      <button onClick={() => removeRecurring(item.id)} style={buttonStyle("danger")}>
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              </Card>
+            </>
+          )}
+
+          {view === "yearly" && (
+            <>
+              {currencyCodes.map((currencyCode) => {
+                const rows = MONTHS.map((month, monthNumber) =>
+                  getCurrencySummary(currencyCode, monthNumber, yearlyReportYear)
+                );
+
+                const yearlyExpected = rows.reduce((sum, row) => sum + row.expected, 0);
+                const yearlyCollected = rows.reduce((sum, row) => sum + row.collected, 0);
+                const yearlyRepairs = rows.reduce((sum, row) => sum + row.repairExpense, 0);
+                const yearlyMaintenance = rows.reduce((sum, row) => sum + row.maintenanceExpense, 0);
+                const yearlyRecurring = rows.reduce((sum, row) => sum + row.recurringExpense, 0);
+                const yearlyExpenses = rows.reduce((sum, row) => sum + row.expenses, 0);
+                const yearlyNet = rows.reduce((sum, row) => sum + row.net, 0);
+
+                if (rows.every((row) => row.buildings.length === 0)) return null;
+
+                const maxAbsNet = Math.max(
+                  1,
+                  ...rows.map((row) => Math.abs(row.net))
+                );
+
+                return (
+                  <Card key={currencyCode}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        marginBottom: 18
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 19, fontWeight: 950 }}>
+                          {getPortfolioLabel(currencyCode)} - {yearlyReportYear}
+                        </div>
+                        <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 4 }}>
+                          Monthly rent, expenses, and net profit
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          background: COLORS.primaryLight,
+                          color: COLORS.primary,
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          fontWeight: 900,
+                          height: "fit-content"
+                        }}
+                      >
+                        {currencyCode}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                        gap: 12,
+                        marginBottom: 18
+                      }}
+                    >
+                      <MetricCard
+                        label="Year collected"
+                        value={formatMoneyByCurrency(yearlyCollected, currencyCode)}
+                        color={COLORS.green}
+                      />
+                      <MetricCard
+                        label="Year expenses"
+                        value={formatMoneyByCurrency(yearlyExpenses, currencyCode)}
+                        color={COLORS.red}
+                      />
+                      <MetricCard
+                        label="Year net"
+                        value={formatMoneyByCurrency(yearlyNet, currencyCode)}
+                        color={yearlyNet >= 0 ? COLORS.green : COLORS.red}
+                      />
+                    </div>
+
+                    <div style={{ overflowX: "auto" }}>
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: 13
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ color: COLORS.muted, textAlign: "left" }}>
+                            <th style={thStyle}>Month</th>
+                            <th style={thStyle}>Expected</th>
+                            <th style={thStyle}>Collected</th>
+                            <th style={thStyle}>Repairs</th>
+                            <th style={thStyle}>Maintenance</th>
+                            <th style={thStyle}>Recurring</th>
+                            <th style={thStyle}>Total expenses</th>
+                            <th style={thStyle}>Net</th>
+                            <th style={thStyle}>Chart</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row, index) => {
+                            const barWidth = Math.max(
+                              4,
+                              Math.round((Math.abs(row.net) / maxAbsNet) * 100)
+                            );
+
+                            return (
+                              <tr
+                                key={MONTHS[index]}
+                                style={{
+                                  borderTop: `1px solid ${COLORS.borderLight}`
+                                }}
+                              >
+                                <td style={tdStyle}>{MONTHS[index]}</td>
+                                <td style={tdStyle}>
+                                  {formatMoneyByCurrency(row.expected, currencyCode)}
+                                </td>
+                                <td style={{ ...tdStyle, color: COLORS.green, fontWeight: 800 }}>
+                                  {formatMoneyByCurrency(row.collected, currencyCode)}
+                                </td>
+                                <td style={tdStyle}>
+                                  {formatMoneyByCurrency(row.repairExpense, currencyCode)}
+                                </td>
+                                <td style={tdStyle}>
+                                  {formatMoneyByCurrency(row.maintenanceExpense, currencyCode)}
+                                </td>
+                                <td style={tdStyle}>
+                                  {formatMoneyByCurrency(row.recurringExpense, currencyCode)}
+                                </td>
+                                <td style={{ ...tdStyle, color: COLORS.red, fontWeight: 800 }}>
+                                  {formatMoneyByCurrency(row.expenses, currencyCode)}
+                                </td>
+                                <td
+                                  style={{
+                                    ...tdStyle,
+                                    color: row.net >= 0 ? COLORS.green : COLORS.red,
+                                    fontWeight: 950
+                                  }}
+                                >
+                                  {formatMoneyByCurrency(row.net, currencyCode)}
+                                </td>
+                                <td style={tdStyle}>
+                                  <div
+                                    style={{
+                                      height: 9,
+                                      width: 120,
+                                      background: COLORS.borderLight,
+                                      borderRadius: 999,
+                                      overflow: "hidden"
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        height: "100%",
+                                        width: `${barWidth}%`,
+                                        background: row.net >= 0 ? COLORS.green : COLORS.red
+                                      }}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          <tr style={{ borderTop: `2px solid ${COLORS.border}` }}>
+                            <td style={{ ...tdStyle, fontWeight: 950 }}>Total</td>
+                            <td style={{ ...tdStyle, fontWeight: 950 }}>
+                              {formatMoneyByCurrency(yearlyExpected, currencyCode)}
+                            </td>
+                            <td style={{ ...tdStyle, fontWeight: 950, color: COLORS.green }}>
+                              {formatMoneyByCurrency(yearlyCollected, currencyCode)}
+                            </td>
+                            <td style={tdStyle}>
+                              {formatMoneyByCurrency(yearlyRepairs, currencyCode)}
+                            </td>
+                            <td style={tdStyle}>
+                              {formatMoneyByCurrency(yearlyMaintenance, currencyCode)}
+                            </td>
+                            <td style={tdStyle}>
+                              {formatMoneyByCurrency(yearlyRecurring, currencyCode)}
+                            </td>
+                            <td style={{ ...tdStyle, fontWeight: 950, color: COLORS.red }}>
+                              {formatMoneyByCurrency(yearlyExpenses, currencyCode)}
+                            </td>
+                            <td style={{ ...tdStyle, fontWeight: 950, color: yearlyNet >= 0 ? COLORS.green : COLORS.red }}>
+                              {formatMoneyByCurrency(yearlyNet, currencyCode)}
+                            </td>
+                            <td style={tdStyle}></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                );
+              })}
+            </>
+          )}
+
           {view === "documents" && (
             <>
               <div style={{ marginBottom: 18 }}>
@@ -2828,6 +3533,18 @@ function Dashboard({ currentUser, onLogout }) {
     </div>
   );
 }
+
+const thStyle = {
+  padding: "10px 8px",
+  fontSize: 12,
+  fontWeight: 900,
+  whiteSpace: "nowrap"
+};
+
+const tdStyle = {
+  padding: "11px 8px",
+  whiteSpace: "nowrap"
+};
 
 function TenantModal({
   tenant,

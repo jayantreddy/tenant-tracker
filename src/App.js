@@ -749,6 +749,8 @@ function Dashboard({ currentUser, onLogout }) {
   function setPayment(tenantId, status, amount, date) {
     const tenant = tenants.find((item) => item.id === tenantId);
 
+    if (!tenant) return;
+
     const value =
       status === "paid"
         ? {
@@ -797,7 +799,7 @@ function Dashboard({ currentUser, onLogout }) {
   function removeDoc(setter, id, index) {
     setter((previous) => ({
       ...previous,
-      [id]: previous[id].filter((_, currentIndex) => currentIndex !== index)
+      [id]: (previous[id] || []).filter((_, currentIndex) => currentIndex !== index)
     }));
   }
 
@@ -1086,6 +1088,16 @@ function Dashboard({ currentUser, onLogout }) {
           setPayment={setPayment}
           uploadDocs={(files) => uploadDocs(setTenantDocs, modal.tenant.id, files)}
           removeDoc={(index) => removeDoc(setTenantDocs, modal.tenant.id, index)}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {modal?.type === "addTenant" && (
+        <AddTenantModal
+          building={modal.building}
+          buildings={buildings}
+          tenants={tenants}
+          setTenants={setTenants}
           onClose={() => setModal(null)}
         />
       )}
@@ -1746,16 +1758,16 @@ function Dashboard({ currentUser, onLogout }) {
                     (tenant) => tenant.buildingId === building.id
                   );
 
-                  if (buildingTenants.length === 0) {
-                    return null;
-                  }
+                  const allTenantsInBuilding = tenants.filter(
+                    (tenant) => tenant.buildingId === building.id
+                  );
 
-                  const expected = buildingTenants.reduce(
+                  const expected = allTenantsInBuilding.reduce(
                     (sum, tenant) => sum + Number(tenant.rent || 0),
                     0
                   );
 
-                  const collected = buildingTenants.reduce((sum, tenant) => {
+                  const collected = allTenantsInBuilding.reduce((sum, tenant) => {
                     const payment = getPayment(tenant.id);
 
                     if (payment.status === "paid") {
@@ -1772,15 +1784,15 @@ function Dashboard({ currentUser, onLogout }) {
                   const propertyProgress =
                     expected > 0 ? Math.round((collected / expected) * 100) : 0;
 
-                  const propertyPaid = buildingTenants.filter(
+                  const propertyPaid = allTenantsInBuilding.filter(
                     (tenant) => getPayment(tenant.id).status === "paid"
                   ).length;
 
-                  const propertyPartial = buildingTenants.filter(
+                  const propertyPartial = allTenantsInBuilding.filter(
                     (tenant) => getPayment(tenant.id).status === "partial"
                   ).length;
 
-                  const propertyUnpaid = buildingTenants.filter(
+                  const propertyUnpaid = allTenantsInBuilding.filter(
                     (tenant) => getPayment(tenant.id).status === "unpaid"
                   ).length;
 
@@ -1886,7 +1898,7 @@ function Dashboard({ currentUser, onLogout }) {
                                     fontWeight: 900
                                   }}
                                 >
-                                  {buildingTenants.length} tenants
+                                  {allTenantsInBuilding.length} tenants
                                 </span>
                               </div>
                             </div>
@@ -1921,11 +1933,32 @@ function Dashboard({ currentUser, onLogout }) {
                               {propertyPaid} paid - {propertyPartial} partial -{" "}
                               {propertyUnpaid} unpaid
                             </div>
+
+                            <button
+                              onClick={() =>
+                                setModal({ type: "addTenant", building })
+                              }
+                              style={{
+                                ...buttonStyle("primary"),
+                                width: "100%",
+                                marginTop: 12
+                              }}
+                            >
+                              Add tenant
+                            </button>
                           </div>
                         </div>
                       </div>
 
                       <div>
+                        {buildingTenants.length === 0 && (
+                          <EmptyState
+                            title="No tenants shown"
+                            text="No tenants match the current filter for this property."
+                            compact
+                          />
+                        )}
+
                         {buildingTenants.map((tenant, index) => {
                           const payment = getPayment(tenant.id);
                           const docs = tenantDocs[tenant.id] || [];
@@ -2826,12 +2859,31 @@ function TenantModal({
   }
 
   function saveTenant() {
+    if (!form.unit || !String(form.unit).trim()) {
+      alert("Please enter unit number.");
+      return;
+    }
+
+    if (!form.name || !String(form.name).trim()) {
+      alert("Please enter tenant name.");
+      return;
+    }
+
+    if (!form.rent || Number(form.rent) <= 0) {
+      alert("Please enter monthly rent.");
+      return;
+    }
+
     setTenants((previous) =>
       previous.map((item) =>
         item.id === form.id
           ? {
               ...item,
               ...form,
+              unit: String(form.unit).trim(),
+              name: String(form.name).trim(),
+              phone: String(form.phone || "").trim(),
+              email: String(form.email || "").trim(),
               rent: Number(form.rent) || 0,
               buildingId: Number(form.buildingId)
             }
@@ -2841,30 +2893,49 @@ function TenantModal({
     onClose();
   }
 
+  function removeTenant() {
+    if (!window.confirm(`Remove ${form.name} from Unit ${form.unit}?`)) {
+      return;
+    }
+
+    setTenants((previous) => previous.filter((item) => item.id !== form.id));
+    onClose();
+  }
+
   return (
     <Modal title={`Edit tenant - Unit ${tenant.unit}`} onClose={onClose}>
+      <Field
+        label="Unit number"
+        value={form.unit}
+        onChange={(value) => updateField("unit", value)}
+      />
+
       <Field
         label="Name"
         value={form.name}
         onChange={(value) => updateField("name", value)}
       />
+
       <Field
         label="Phone"
         value={form.phone}
         onChange={(value) => updateField("phone", value)}
       />
+
       <Field
         label="Email"
         type="email"
         value={form.email}
         onChange={(value) => updateField("email", value)}
       />
+
       <Field
         label={`Monthly rent (${currency.symbol})`}
         type="number"
         value={form.rent}
         onChange={(value) => updateField("rent", value)}
       />
+
       <Field
         label="Lease end"
         type="date"
@@ -3034,20 +3105,188 @@ function TenantModal({
           display: "flex",
           justifyContent: "space-between",
           gap: 10,
-          marginTop: 22
+          marginTop: 22,
+          flexWrap: "wrap"
         }}
       >
-        <div style={{ color: COLORS.muted, fontSize: 13 }}>
-          Current rent: <strong>{formatMoney(form.rent, form.buildingId)}</strong>
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={removeTenant} style={buttonStyle("danger")}>
+          Remove tenant
+        </button>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap"
+          }}
+        >
+          <div style={{ color: COLORS.muted, fontSize: 13 }}>
+            Current rent:{" "}
+            <strong>{formatMoney(form.rent, form.buildingId)}</strong>
+          </div>
+
           <button onClick={onClose} style={buttonStyle()}>
             Cancel
           </button>
+
           <button onClick={saveTenant} style={buttonStyle("primary")}>
             Save changes
           </button>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AddTenantModal({ building, buildings, tenants, setTenants, onClose }) {
+  const selectedBuilding = building || buildings[0];
+
+  const [form, setForm] = useState({
+    unit: "",
+    name: "",
+    phone: "",
+    email: "",
+    rent: "",
+    leaseEnd: today.toISOString().slice(0, 10),
+    buildingId: selectedBuilding?.id || ""
+  });
+
+  function updateField(field, value) {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value
+    }));
+  }
+
+  function saveTenant() {
+    if (!form.unit.trim()) {
+      alert("Please enter unit number.");
+      return;
+    }
+
+    if (!form.name.trim()) {
+      alert("Please enter tenant name.");
+      return;
+    }
+
+    if (!form.rent || Number(form.rent) <= 0) {
+      alert("Please enter monthly rent.");
+      return;
+    }
+
+    if (!form.buildingId) {
+      alert("Please select a property.");
+      return;
+    }
+
+    const unitExists = tenants.some(
+      (tenant) =>
+        tenant.buildingId === Number(form.buildingId) &&
+        String(tenant.unit).trim().toLowerCase() ===
+          String(form.unit).trim().toLowerCase()
+    );
+
+    if (unitExists) {
+      alert("This unit already has a tenant in this property.");
+      return;
+    }
+
+    const newId = Math.max(0, ...tenants.map((tenant) => tenant.id)) + 1;
+
+    const newTenant = {
+      id: newId,
+      unit: form.unit.trim(),
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      rent: Number(form.rent) || 0,
+      leaseEnd: form.leaseEnd,
+      buildingId: Number(form.buildingId)
+    };
+
+    setTenants((previous) => [...previous, newTenant]);
+    onClose();
+  }
+
+  const selectedCurrency = getCurrency(
+    buildings.find((item) => item.id === Number(form.buildingId))?.currency ||
+      "INR"
+  );
+
+  return (
+    <Modal title="Add tenant" onClose={onClose}>
+      <SelectField
+        label="Property"
+        value={form.buildingId}
+        onChange={(value) => updateField("buildingId", Number(value))}
+      >
+        {buildings.map((building, index) => (
+          <option key={building.id} value={building.id}>
+            Property {index + 1}: {building.name} - {building.currency}
+          </option>
+        ))}
+      </SelectField>
+
+      <Field
+        label="Unit number"
+        value={form.unit}
+        onChange={(value) => updateField("unit", value)}
+        placeholder="Example: 101"
+      />
+
+      <Field
+        label="Tenant name"
+        value={form.name}
+        onChange={(value) => updateField("name", value)}
+        placeholder="Enter tenant name"
+      />
+
+      <Field
+        label="Phone"
+        value={form.phone}
+        onChange={(value) => updateField("phone", value)}
+        placeholder="Enter phone number"
+      />
+
+      <Field
+        label="Email"
+        type="email"
+        value={form.email}
+        onChange={(value) => updateField("email", value)}
+        placeholder="Enter email address"
+      />
+
+      <Field
+        label={`Monthly rent (${selectedCurrency.symbol})`}
+        type="number"
+        value={form.rent}
+        onChange={(value) => updateField("rent", value)}
+        placeholder="Enter rent amount"
+      />
+
+      <Field
+        label="Lease end"
+        type="date"
+        value={form.leaseEnd}
+        onChange={(value) => updateField("leaseEnd", value)}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 10,
+          marginTop: 22
+        }}
+      >
+        <button onClick={onClose} style={buttonStyle()}>
+          Cancel
+        </button>
+
+        <button onClick={saveTenant} style={buttonStyle("primary")}>
+          Add tenant
+        </button>
       </div>
     </Modal>
   );

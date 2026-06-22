@@ -1,4 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ====== CLOUD SYNC CONFIG ======
+// Create a free project at https://supabase.com, then:
+//   Project Settings -> API -> copy "Project URL" and the "anon public" key.
+// The anon key is safe to expose in frontend code.
+const SUPABASE_URL = "https://teswckonlxvpeyenbjdq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3dja29ubHh2cGV5ZW5iamRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNDIzNjMsImV4cCI6MjA5NzcxODM2M30.lwKEXeX437oR7hTYCR9yxDOylGt3omdt0FrxNLlf8XY";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ================================
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -197,13 +207,78 @@ function useStoredState(key, initialValue) {
     }
   });
 
+  // Wait for the first Supabase read before pushing, so local default/demo
+  // data never overwrites real cloud data on startup.
+  const [loaded, setLoaded] = useState(false);
+
+  // Last value we synced (sent OR received) - stops our own writes from
+  // echoing back through the real-time channel and looping.
+  const lastSyncedRef = useRef(null);
+
+  // 1) Pull the latest value from Supabase once on mount.
   useEffect(() => {
+    let active = true;
+    supabase
+      .from("app_state")
+      .select("value")
+      .eq("key", key)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (!error && data && data.value != null) {
+          lastSyncedRef.current = JSON.stringify(data.value);
+          setValue(data.value);
+        }
+        setLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [key]);
+
+  // 2) Live updates: apply changes other users make to this key.
+  useEffect(() => {
+    const channel = supabase
+      .channel("app_state:" + key)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "app_state", filter: "key=eq." + key },
+        (payload) => {
+          const next = payload.new && payload.new.value;
+          if (next == null) return;
+          const serialized = JSON.stringify(next);
+          if (serialized === lastSyncedRef.current) return;
+          lastSyncedRef.current = serialized;
+          try {
+            localStorage.setItem(key, serialized);
+          } catch {
+            // Ignore storage errors.
+          }
+          setValue(next);
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [key]);
+
+  // 3) Save local changes to localStorage (instant) and Supabase (permanent).
+  useEffect(() => {
+    if (!loaded) return;
+    const serialized = JSON.stringify(value);
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      localStorage.setItem(key, serialized);
     } catch {
       // Ignore storage errors.
     }
-  }, [key, value]);
+    if (serialized === lastSyncedRef.current) return;
+    lastSyncedRef.current = serialized;
+    supabase
+      .from("app_state")
+      .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" })
+      .then(() => {});
+  }, [key, value, loaded]);
 
   return [value, setValue];
 }

@@ -433,7 +433,8 @@ function Badge({ status }) {
     resolved: { label: "Resolved", color: COLORS.green, bg: COLORS.greenLight },
     monthly: { label: "Monthly", color: COLORS.green, bg: COLORS.greenLight },
     yearly: { label: "Yearly", color: COLORS.blue, bg: COLORS.blueLight },
-    inactive: { label: "Inactive", color: COLORS.red, bg: COLORS.redLight }
+    inactive: { label: "Inactive", color: COLORS.red, bg: COLORS.redLight },
+    vacant: { label: "Vacant", color: COLORS.muted, bg: COLORS.borderLight }
   };
 
   const item = config[status] || config.unpaid;
@@ -1118,12 +1119,15 @@ function Dashboard({ currentUser, onLogout }) {
       currencyBuildingIds.includes(tenant.buildingId)
     );
 
-    const expected = currencyTenants.reduce(
+    const occupiedTenants = currencyTenants.filter((tenant) => !tenant.vacant);
+    const vacantUnits = currencyTenants.length - occupiedTenants.length;
+
+    const expected = occupiedTenants.reduce(
       (sum, tenant) => sum + Number(tenant.rent || 0),
       0
     );
 
-    const collected = currencyTenants.reduce((sum, tenant) => {
+    const collected = occupiedTenants.reduce((sum, tenant) => {
       const payment = getPayment(tenant.id, month, year);
 
       if (payment.status === "paid") {
@@ -1156,6 +1160,9 @@ function Dashboard({ currentUser, onLogout }) {
     return {
       currencyCode,
       buildings: currencyBuildings,
+      units: currencyTenants.length,
+      occupiedUnits: occupiedTenants.length,
+      vacantUnits,
       expected,
       collected,
       repairExpense,
@@ -1191,13 +1198,13 @@ function Dashboard({ currentUser, onLogout }) {
         building?.name || "",
         building?.country || "",
         tenant.unit,
-        tenant.name,
-        tenant.rent,
+        tenant.vacant ? "VACANT" : tenant.name,
+        tenant.vacant ? 0 : tenant.rent,
         building?.currency || "",
-        payment.status,
-        payment.amount || "",
-        payment.date,
-        tenant.leaseEnd
+        tenant.vacant ? "vacant" : payment.status,
+        tenant.vacant ? "" : payment.amount || "",
+        tenant.vacant ? "" : payment.date,
+        tenant.vacant ? "" : tenant.leaseEnd
       ]);
     });
 
@@ -1212,28 +1219,42 @@ function Dashboard({ currentUser, onLogout }) {
     const payment = getPayment(tenant.id);
     const query = search.toLowerCase();
 
+    const matchesStatus =
+      statusFilter === "all"
+        ? true
+        : statusFilter === "vacant"
+        ? !!tenant.vacant
+        : !tenant.vacant && payment.status === statusFilter;
+
     return (
-      (statusFilter === "all" || payment.status === statusFilter) &&
+      matchesStatus &&
       (buildingFilter === 0 || tenant.buildingId === buildingFilter) &&
-      (tenant.name.toLowerCase().includes(query) || tenant.unit.includes(query))
+      ((tenant.name || "").toLowerCase().includes(query) ||
+        String(tenant.unit).toLowerCase().includes(query))
     );
   });
 
-  const paidCount = tenants.filter(
+  const occupiedTenants = tenants.filter((tenant) => !tenant.vacant);
+
+  const paidCount = occupiedTenants.filter(
     (tenant) => getPayment(tenant.id).status === "paid"
   ).length;
 
-  const partialCount = tenants.filter(
+  const partialCount = occupiedTenants.filter(
     (tenant) => getPayment(tenant.id).status === "partial"
   ).length;
 
-  const unpaidCount = tenants.filter(
+  const unpaidCount = occupiedTenants.filter(
     (tenant) => getPayment(tenant.id).status === "unpaid"
   ).length;
 
+  const vacantCount = tenants.filter((tenant) => tenant.vacant).length;
+
   const collectionProgress =
-    tenants.length > 0
-      ? Math.round(((paidCount + partialCount * 0.5) / tenants.length) * 100)
+    occupiedTenants.length > 0
+      ? Math.round(
+          ((paidCount + partialCount * 0.5) / occupiedTenants.length) * 100
+        )
       : 0;
 
   const currencyCodes = Array.from(new Set(buildings.map((building) => building.currency)));
@@ -1263,6 +1284,7 @@ function Dashboard({ currentUser, onLogout }) {
   );
 
   const expiringLeases = tenants.filter((tenant) => {
+    if (tenant.vacant) return false;
     const days = (new Date(tenant.leaseEnd) - today) / 86400000;
     return days >= 0 && days <= 60;
   });
@@ -1677,7 +1699,8 @@ function Dashboard({ currentUser, onLogout }) {
                         marginTop: 4
                       }}
                     >
-                      {paidCount} paid - {partialCount} partial - {unpaidCount} unpaid
+                      {paidCount} paid - {partialCount} partial - {unpaidCount}{" "}
+                      unpaid - {vacantCount} vacant
                     </div>
                   </div>
                   <div
@@ -1696,6 +1719,89 @@ function Dashboard({ currentUser, onLogout }) {
                   </div>
                 </div>
                 <Progress value={collectionProgress} />
+              </Card>
+
+              <Card>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    marginBottom: vacantCount > 0 ? 14 : 0
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 17, fontWeight: 900 }}>
+                      Vacant units
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: COLORS.muted,
+                        marginTop: 4
+                      }}
+                    >
+                      Units with no tenant assigned
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 28,
+                      fontWeight: 950,
+                      color: vacantCount > 0 ? COLORS.amber : COLORS.green
+                    }}
+                  >
+                    {vacantCount}
+                  </div>
+                </div>
+
+                {vacantCount > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 8
+                    }}
+                  >
+                    {tenants
+                      .filter((tenant) => tenant.vacant)
+                      .map((tenant) => {
+                        const building = getBuilding(tenant.buildingId);
+                        return (
+                          <button
+                            key={tenant.id}
+                            onClick={() => {
+                              setView("tenants");
+                              setModal({ type: "tenant", tenant });
+                            }}
+                            style={{
+                              border: `1px solid ${COLORS.border}`,
+                              background: COLORS.page,
+                              borderRadius: 12,
+                              padding: "8px 12px",
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color: COLORS.text,
+                              cursor: "pointer"
+                            }}
+                          >
+                            Unit {tenant.unit}
+                            <span
+                              style={{
+                                color: COLORS.muted,
+                                fontWeight: 600,
+                                marginLeft: 6
+                              }}
+                            >
+                              {building?.name || ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
               </Card>
 
               <Card>
@@ -1729,8 +1835,12 @@ function Dashboard({ currentUser, onLogout }) {
 
                 {buildings.map((building, index) => {
                   const buildingTenants = tenants.filter(
-                    (tenant) => tenant.buildingId === building.id
+                    (tenant) => tenant.buildingId === building.id && !tenant.vacant
                   );
+
+                  const vacantInBuilding = tenants.filter(
+                    (tenant) => tenant.buildingId === building.id && tenant.vacant
+                  ).length;
 
                   const expected = buildingTenants.reduce(
                     (sum, tenant) => sum + Number(tenant.rent || 0),
@@ -1831,6 +1941,20 @@ function Dashboard({ currentUser, onLogout }) {
                               >
                                 {building.currency}
                               </span>
+                              {vacantInBuilding > 0 && (
+                                <span
+                                  style={{
+                                    background: COLORS.borderLight,
+                                    color: COLORS.muted,
+                                    borderRadius: 999,
+                                    padding: "4px 9px",
+                                    fontSize: 11,
+                                    fontWeight: 900
+                                  }}
+                                >
+                                  {vacantInBuilding} vacant
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1961,6 +2085,7 @@ function Dashboard({ currentUser, onLogout }) {
                     <option value="paid">Paid</option>
                     <option value="partial">Partial</option>
                     <option value="unpaid">Unpaid</option>
+                    <option value="vacant">Vacant</option>
                   </select>
                 </div>
               </Card>
@@ -1982,12 +2107,20 @@ function Dashboard({ currentUser, onLogout }) {
                     (tenant) => tenant.buildingId === building.id
                   );
 
-                  const expected = allTenantsInBuilding.reduce(
+                  const occupiedInBuilding = allTenantsInBuilding.filter(
+                    (tenant) => !tenant.vacant
+                  );
+
+                  const propertyVacant = allTenantsInBuilding.filter(
+                    (tenant) => tenant.vacant
+                  ).length;
+
+                  const expected = occupiedInBuilding.reduce(
                     (sum, tenant) => sum + Number(tenant.rent || 0),
                     0
                   );
 
-                  const collected = allTenantsInBuilding.reduce((sum, tenant) => {
+                  const collected = occupiedInBuilding.reduce((sum, tenant) => {
                     const payment = getPayment(tenant.id);
 
                     if (payment.status === "paid") {
@@ -2004,15 +2137,15 @@ function Dashboard({ currentUser, onLogout }) {
                   const propertyProgress =
                     expected > 0 ? Math.round((collected / expected) * 100) : 0;
 
-                  const propertyPaid = allTenantsInBuilding.filter(
+                  const propertyPaid = occupiedInBuilding.filter(
                     (tenant) => getPayment(tenant.id).status === "paid"
                   ).length;
 
-                  const propertyPartial = allTenantsInBuilding.filter(
+                  const propertyPartial = occupiedInBuilding.filter(
                     (tenant) => getPayment(tenant.id).status === "partial"
                   ).length;
 
-                  const propertyUnpaid = allTenantsInBuilding.filter(
+                  const propertyUnpaid = occupiedInBuilding.filter(
                     (tenant) => getPayment(tenant.id).status === "unpaid"
                   ).length;
 
@@ -2118,8 +2251,23 @@ function Dashboard({ currentUser, onLogout }) {
                                     fontWeight: 900
                                   }}
                                 >
-                                  {allTenantsInBuilding.length} tenants
+                                  {occupiedInBuilding.length} occupied
                                 </span>
+
+                                {propertyVacant > 0 && (
+                                  <span
+                                    style={{
+                                      background: COLORS.borderLight,
+                                      color: COLORS.muted,
+                                      borderRadius: 999,
+                                      padding: "4px 9px",
+                                      fontSize: 11,
+                                      fontWeight: 900
+                                    }}
+                                  >
+                                    {propertyVacant} vacant
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -2211,10 +2359,11 @@ function Dashboard({ currentUser, onLogout }) {
                                   style={{
                                     fontSize: 16,
                                     fontWeight: 900,
-                                    marginTop: 3
+                                    marginTop: 3,
+                                    color: tenant.vacant ? COLORS.muted : COLORS.text
                                   }}
                                 >
-                                  {tenant.name}
+                                  {tenant.vacant ? "Vacant" : tenant.name}
                                 </div>
 
                                 <div
@@ -2224,7 +2373,9 @@ function Dashboard({ currentUser, onLogout }) {
                                     marginTop: 2
                                   }}
                                 >
-                                  {formatMoney(tenant.rent, tenant.buildingId)}/mo
+                                  {tenant.vacant
+                                    ? "No tenant"
+                                    : `${formatMoney(tenant.rent, tenant.buildingId)}/mo`}
                                 </div>
                               </div>
 
@@ -2236,9 +2387,15 @@ function Dashboard({ currentUser, onLogout }) {
                                   lineHeight: 1.6
                                 }}
                               >
-                                <div>{tenant.email}</div>
-                                <div>{tenant.phone}</div>
-                                <div>Lease ends {tenant.leaseEnd}</div>
+                                {tenant.vacant ? (
+                                  <div>Unoccupied unit - available to rent</div>
+                                ) : (
+                                  <>
+                                    <div>{tenant.email}</div>
+                                    <div>{tenant.phone}</div>
+                                    <div>Lease ends {tenant.leaseEnd}</div>
+                                  </>
+                                )}
                               </div>
 
                               <div
@@ -2250,35 +2407,41 @@ function Dashboard({ currentUser, onLogout }) {
                                   flexWrap: "wrap"
                                 }}
                               >
-                                <Badge status={payment.status} />
+                                {tenant.vacant ? (
+                                  <Badge status="vacant" />
+                                ) : (
+                                  <>
+                                    <Badge status={payment.status} />
 
-                                {payment.status === "partial" && (
-                                  <strong
-                                    style={{
-                                      color: COLORS.amber,
-                                      fontSize: 13
-                                    }}
-                                  >
-                                    {formatMoney(
-                                      payment.amount,
-                                      tenant.buildingId
+                                    {payment.status === "partial" && (
+                                      <strong
+                                        style={{
+                                          color: COLORS.amber,
+                                          fontSize: 13
+                                        }}
+                                      >
+                                        {formatMoney(
+                                          payment.amount,
+                                          tenant.buildingId
+                                        )}
+                                      </strong>
                                     )}
-                                  </strong>
+
+                                    <button
+                                      onClick={() => setPayment(tenant.id, "paid")}
+                                      style={buttonStyle("green")}
+                                    >
+                                      Paid
+                                    </button>
+
+                                    <button
+                                      onClick={() => setPayment(tenant.id, "unpaid")}
+                                      style={buttonStyle("danger")}
+                                    >
+                                      Unpaid
+                                    </button>
+                                  </>
                                 )}
-
-                                <button
-                                  onClick={() => setPayment(tenant.id, "paid")}
-                                  style={buttonStyle("green")}
-                                >
-                                  Paid
-                                </button>
-
-                                <button
-                                  onClick={() => setPayment(tenant.id, "unpaid")}
-                                  style={buttonStyle("danger")}
-                                >
-                                  Unpaid
-                                </button>
 
                                 <button
                                   onClick={() =>
@@ -3656,12 +3819,12 @@ function TenantModal({
       return;
     }
 
-    if (!form.name || !String(form.name).trim()) {
+    if (!form.vacant && (!form.name || !String(form.name).trim())) {
       alert("Please enter tenant name.");
       return;
     }
 
-    if (!form.rent || Number(form.rent) <= 0) {
+    if (!form.vacant && (!form.rent || Number(form.rent) <= 0)) {
       alert("Please enter monthly rent.");
       return;
     }
@@ -3672,8 +3835,9 @@ function TenantModal({
           ? {
               ...item,
               ...form,
+              vacant: !!form.vacant,
               unit: String(form.unit).trim(),
-              name: String(form.name).trim(),
+              name: String(form.name || "").trim(),
               phone: String(form.phone || "").trim(),
               email: String(form.email || "").trim(),
               rent: Number(form.rent) || 0,
@@ -3746,6 +3910,30 @@ function TenantModal({
           </option>
         ))}
       </SelectField>
+
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginTop: 14,
+          padding: "12px 14px",
+          borderRadius: 12,
+          border: `1px solid ${COLORS.border}`,
+          background: form.vacant ? COLORS.amberLight : COLORS.page,
+          cursor: "pointer",
+          fontWeight: 800,
+          fontSize: 14
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={!!form.vacant}
+          onChange={(event) => updateField("vacant", event.target.checked)}
+          style={{ width: 18, height: 18 }}
+        />
+        Mark this unit as vacant (no tenant)
+      </label>
 
       <div
         style={{
@@ -3941,7 +4129,8 @@ function AddTenantModal({ building, buildings, tenants, setTenants, onClose }) {
     email: "",
     rent: "",
     leaseEnd: today.toISOString().slice(0, 10),
-    buildingId: selectedBuilding?.id || ""
+    buildingId: selectedBuilding?.id || "",
+    vacant: false
   });
 
   function updateField(field, value) {
@@ -3957,12 +4146,12 @@ function AddTenantModal({ building, buildings, tenants, setTenants, onClose }) {
       return;
     }
 
-    if (!form.name.trim()) {
+    if (!form.vacant && !form.name.trim()) {
       alert("Please enter tenant name.");
       return;
     }
 
-    if (!form.rent || Number(form.rent) <= 0) {
+    if (!form.vacant && (!form.rent || Number(form.rent) <= 0)) {
       alert("Please enter monthly rent.");
       return;
     }
@@ -3980,7 +4169,7 @@ function AddTenantModal({ building, buildings, tenants, setTenants, onClose }) {
     );
 
     if (unitExists) {
-      alert("This unit already has a tenant in this property.");
+      alert("This unit already exists in this property.");
       return;
     }
 
@@ -3989,12 +4178,13 @@ function AddTenantModal({ building, buildings, tenants, setTenants, onClose }) {
     const newTenant = {
       id: newId,
       unit: form.unit.trim(),
-      name: form.name.trim(),
+      name: form.vacant ? "" : form.name.trim(),
       phone: form.phone.trim(),
       email: form.email.trim(),
       rent: Number(form.rent) || 0,
       leaseEnd: form.leaseEnd,
-      buildingId: Number(form.buildingId)
+      buildingId: Number(form.buildingId),
+      vacant: !!form.vacant
     };
 
     setTenants((previous) => [...previous, newTenant]);
@@ -4064,6 +4254,30 @@ function AddTenantModal({ building, buildings, tenants, setTenants, onClose }) {
         onChange={(value) => updateField("leaseEnd", value)}
       />
 
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginTop: 14,
+          padding: "12px 14px",
+          borderRadius: 12,
+          border: `1px solid ${COLORS.border}`,
+          background: form.vacant ? COLORS.amberLight : COLORS.page,
+          cursor: "pointer",
+          fontWeight: 800,
+          fontSize: 14
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={!!form.vacant}
+          onChange={(event) => updateField("vacant", event.target.checked)}
+          style={{ width: 18, height: 18 }}
+        />
+        Add as a vacant unit (no tenant yet)
+      </label>
+
       <div
         style={{
           display: "flex",
@@ -4077,7 +4291,7 @@ function AddTenantModal({ building, buildings, tenants, setTenants, onClose }) {
         </button>
 
         <button onClick={saveTenant} style={buttonStyle("primary")}>
-          Add tenant
+          {form.vacant ? "Add vacant unit" : "Add tenant"}
         </button>
       </div>
     </Modal>

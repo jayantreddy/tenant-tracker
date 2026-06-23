@@ -3864,15 +3864,15 @@ const LEASE_DEFAULTS = {
   agreementDate: "",
   lessorName: "Gp Capt KK Reddy (Retd)",
   lessorAddress:
-    "No 68, 5th Temple Road 15th Cross, Malleshwaram Bengaluru-560003",
+    "No 68, 5th Temple Road\n15th Cross, Malleshwaram\nBengaluru-560003",
   lesseeName: "",
   lesseeAge: "",
   lesseeGuardian: "",
   lesseeAddress: "",
-  premisesAddress:
-    "No.202, Balaji Layout, Byaderahalli, Magdi Road, Bengaluru-560091",
+  propertyName: "Sri Krishna Residency",
+  premisesAddress: "No.202, Balaji Layout, Byaderahalli",
   accommodation:
-    "One room and One bathroom, with all essential sanitary, electrical fittings, and furniture",
+    "Two rooms and Two bathroom, with all essential sanitary, electrical fittings, and furniture",
   rent: "",
   maintenance: "1250",
   unitDesignation: "",
@@ -3880,12 +3880,19 @@ const LEASE_DEFAULTS = {
   leaseMonths: "11",
   enhancePct: "5",
   deposit: "",
-  propertyName: "",
   scheduleAddress: "202, Balaji Layout, Byaderahalli, Bangalore-560091",
-  floor: "",
-  fittings: "Fan-Two\nTube light-Two\nGeyser-one\nWood work - Built in cupboards in the room with locker facility and Kitchen. Tv stand in the drawing room. One wooden Shoe rack.",
-  lessorSignName: "KK Reddy",
-  lesseeSignName: ""
+  scheduleAccommodation:
+    "Two rooms, Drawing, Dining, Kitchen with Two bathrooms with lavatory fittings",
+  floor: "Second floor",
+  fittings:
+    "Fan - Three\nTube light - Three\nGeyser - Two\nWood work - Built in cupboards in the rooms with locker facility and Kitchen. Tv stand in the drawing room. One wooden Shoe rack.",
+  lessorSignName: "Gp Capt KK Reddy (Retd)",
+  lesseeSignName: "",
+  witness1Name: "S THULASI REDDY",
+  witness1Address:
+    "68, 5TH TEMPLE ROAD,15TH CROSS\nMALLESHWARAM, BENGALURU-560003",
+  witness2Name: "SUMA SANJEEV",
+  witness2Address: "209, BALAJI LAYOUT, BADERAHALLI\nBENGALURU-56091"
 };
 
 function buildLeaseHTML(f) {
@@ -3895,13 +3902,19 @@ function buildLeaseHTML(f) {
   const maintNum = Number(f.maintenance) || 0;
   const rentWords = numberToWords(rentNum);
   const depositWords = numberToWords(depositNum);
-  const maintWords = numberToWords(maintNum);
   const esc = (s) =>
     String(s == null ? "" : s)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
-  const fittingsHtml = esc(f.fittings).replace(/\n/g, "<br/>");
+  const nl2br = (s) => esc(s).replace(/\n/g, "<br/>");
+
+  const fittingsItems = String(f.fittings || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `<li>${esc(line)}</li>`)
+    .join("");
 
   return `<!DOCTYPE html>
 <html>
@@ -3909,14 +3922,19 @@ function buildLeaseHTML(f) {
 <meta charset="utf-8"/>
 <title>Rental Agreement - ${esc(f.lesseeName)}</title>
 <style>
-  @page { size: A4; margin: 22mm 20mm; }
-  body { font-family: "Times New Roman", Georgia, serif; font-size: 12.5pt; line-height: 1.6; color: #000; }
-  h1 { text-align: center; font-size: 16pt; text-decoration: underline; margin-bottom: 26px; }
-  h2 { text-align: center; font-size: 13pt; text-decoration: underline; margin: 26px 0 10px; }
+  @page { size: A4; margin: 20mm 18mm; }
+  body { font-family: "Times New Roman", Georgia, serif; font-size: 12pt; line-height: 1.55; color: #000; }
+  h1 { text-align: center; font-size: 15pt; font-weight: bold; text-decoration: underline; margin: 0 0 22px; }
+  h2 { text-align: center; font-size: 13pt; font-weight: bold; text-decoration: underline; margin: 24px 0 12px; }
   p { margin: 0 0 12px; text-align: justify; }
-  .sig { margin-top: 70px; display: flex; justify-content: space-between; }
-  .sig div { width: 45%; }
-  .center { text-align: center; }
+  .party { text-align: center; margin: 0 0 12px; }
+  ol.clauses { padding-left: 26px; margin: 0 0 12px; }
+  ol.clauses > li { margin-bottom: 11px; text-align: justify; }
+  ol.fittings { padding-left: 26px; margin: 4px 0 12px; }
+  ol.fittings > li { margin-bottom: 4px; }
+  table.sig { width: 100%; margin-top: 56px; border-collapse: collapse; page-break-inside: avoid; }
+  table.sig td { vertical-align: top; padding: 0 0 60px; font-size: 11.5pt; }
+  table.sig td.right { text-align: left; width: 38%; }
   .pre { white-space: pre-line; }
 </style>
 </head>
@@ -3925,56 +3943,58 @@ function buildLeaseHTML(f) {
 
   <p>This agreement is made and executed at ${esc(f.place)} on this ${d.full}, by and between:-</p>
 
-  <p><b>${esc(f.lessorName)}</b>, ${esc(f.lessorAddress)}<br/>
-  Herein referred to as &lsquo;LESSOR&rsquo; of the first part and in favour of</p>
+  <p class="party"><b>${esc(f.lessorName)}</b><br/>${nl2br(f.lessorAddress)}</p>
 
-  <p><b>${esc(f.lesseeName)}</b>${f.lesseeAge ? `&nbsp;&nbsp;&nbsp;Aged about ${esc(f.lesseeAge)} Yrs` : ""}<br/>
-  ${f.lesseeGuardian ? `S/o ${esc(f.lesseeGuardian)}<br/>` : ""}
-  ${esc(f.lesseeAddress)}<br/>
-  Herein after called the &lsquo;LESSEE/TENANT&rsquo; of the other part; witnessed as follows:-</p>
+  <p>Herein referred to as &lsquo;LESSOR&rsquo; of the first part and in favour of</p>
+
+  <p class="party"><b>${esc(f.lesseeName)}</b>${f.lesseeAge ? `, Aged about ${esc(f.lesseeAge)} Yrs` : ""}${f.lesseeGuardian ? `<br/>S/o ${esc(f.lesseeGuardian)}` : ""}<br/>${nl2br(f.lesseeAddress)}</p>
+
+  <p>Hereinafter called the &lsquo;LESSEE/TENANT&rsquo; of the other part; witnessed as follows:-</p>
 
   <p>Whereas the terms lessor and lessee shall mean and include their respective heirs, legal representatives, administrators, and assigns, etc.</p>
 
-  <p>And whereas the lessor is the sole and absolute owner of the premises situated at ${esc(f.premisesAddress)}, and whereas the lessee has approached with the lessor to let out the scheduled premises on rental basis, and the lessor agrees to let-out the same under the following terms and conditions:-</p>
+  <p>And whereas the lessor is the sole and absolute owner of the premises situated at ${esc(f.propertyName)}${f.premisesAddress ? `, ${esc(f.premisesAddress)}` : ""} and whereas the lessee has approached with the lessor to let out the scheduled premises apartment ${esc(f.unitDesignation)}, on rental basis, and the lessor agrees to let-out the same under the following terms and conditions: -</p>
 
-  <p>Whereas the lessor agrees to let-out the schedule premises consisting of ${esc(f.accommodation)} provided in the premises for a monthly rent of <b>Rs ${rentNum.toLocaleString("en-IN")}/-</b> (Rupees ${rentWords} only) per month including maintenance charges of Rs ${maintNum.toLocaleString("en-IN")}/-${maintNum ? ` (Rupees ${maintWords} only)` : ""}, and the lessee shall agree to pay the same every month. The apartment is designated as No. ${esc(f.unitDesignation)}.</p>
+  <ol class="clauses">
+    <li>Whereas the lessor agrees to let-out the schedule premises consisting of ${esc(f.accommodation)} provided in the premises for a monthly rent of <b>Rs ${rentNum.toLocaleString("en-IN")}/-</b> (Rupees ${rentWords} Rupees only) per month including maintenance charges of Rs ${maintNum.toLocaleString("en-IN")}/-, and the lessee shall agree to pay the same every month. The apartment is designated as No. ${esc(f.unitDesignation)}.</li>
 
-  <p>Whereas the lessee agrees to pay the monthly rent by on or before ${ordinalDay(f.rentDueDay)} of every English calendar month.</p>
+    <li>Whereas the lessee agrees to pay the monthly rent by on or before ${ordinalDay(f.rentDueDay)} of every English calendar month.</li>
 
-  <p>Whereas the lessee shall use the scheduled premises for residential purpose only and should not use for any illegal or immoral purposes.</p>
+    <li>Whereas the lessee shall use the scheduled premises for residential purpose only and should not use for any illegal or immoral purposes.</li>
 
-  <p>The lease will be for a period of ${esc(f.leaseMonths)} months from the date of this agreement, but it can be extended by mutual consent. The rent shall be enhanced once every ${esc(f.leaseMonths)} months @ ${esc(f.enhancePct)}% over the existing rent.</p>
+    <li>The lease will be for a period of ${esc(f.leaseMonths)} (Eleven) months from the date of this agreement, but it can be extended by mutual consent. The rent shall be enhanced once every ${esc(f.leaseMonths)} months@ ${esc(f.enhancePct)}% over the existing rent.</li>
 
-  <p>Whereas the lessee should not sublet or underlet the schedule premises to any other person without written consent from the lessor. Whereas the lessee shall keep the schedule premises in good condition without any damages to the fittings and fixtures, get the maintenance done as and when required at his own expense, maintain the house, walls neat and clean, if the conditions are not met by the Lessee, then a suitable amount according to the damage will be deducted from the security deposit.</p>
+    <li>Whereas the lessee should not sublet or underlet the schedule premises to any other person without written consent from the lessor. Whereas the lessee shall keep the schedule premises in good condition without any damages to the fittings and fixtures, get the maintenance done as and when required at his own expense, maintain the house, walls neat and clean, if the conditions are not met by the Lessee, then a suitable amount according to the damage will be deducted from the security deposit.</li>
 
-  <p>Whereas the lessee has paid a sum of <b>Rs.${depositNum.toLocaleString("en-IN")}/-</b> (Rupees ${depositWords} only) towards security deposit. Thus, the lessor has received and acknowledges the receipt of the same. This amount shall not carry any interest and the same will be refundable to the lessee at the time of vacating the schedule premises.</p>
+    <li>Whereas the lessee has paid a sum of <b>Rs.${depositNum.toLocaleString("en-IN")}/-</b> (Rupees ${depositWords} only) towards security deposit. Thus, the lessor has received and acknowledges the receipt of the same. This amount shall not carry any interest and the same will be refundable to the lessee at the time of vacating the scheduled premises.</li>
 
-  <p>And whereas the lessee hereby agrees to pay the electricity charges to the concerned authorities without arrears during this tenancy period. The water charges and common (BWSSB) and common electricity bill (water pumping charges) to be shared along with other tenants included in the maintenance charges subject to change with increasing water charges. In case of sourcing water tanker due to shortage of water will be charged extra. Painting to be done while vacating the premises or one month rent shall be deducted for the same, from the security deposit, at the time of vacating. The Lessee shall handover the last bills duly paid till the last day to the Lessor.</p>
+    <li>And whereas the lessee hereby agrees to pay the electricity charges to the concerned authorities without arrears during this tenancy period. The water charges and common (BWSSB) and common electricity bill (water pumping charges) to be shared along with other tenants included in the maintenance charges subject to change with increasing water/Electricity charges. In case of water shortage or no supply from BWSSB, additional expenditure to procure water from tankers is not catered in the maintenance charges, this has to be paid additionally pro rata with other tenants of the building. Painting to be done while vacating the premises the lessee shall hand over the house in good order and ensure electrical fittings in working condition, in case of unserviceability an appropriate amount will be liable to be deducted from the Security deposit in addition one month rent which shall be deducted for the painting from the security deposit, at the time of vacating. The Lessee shall handover the last bills duly paid till the last day to the Lessor.</li>
 
-  <p>The lessee shall vacate the premises after giving a one month written notice from the lessor. Similarly, the lessee can vacate the premises after giving one month notice to the lessor.</p>
+    <li>The lessee shall vacate the premises after giving a one month written notice from the lessor. Similarly, the lessee can vacate the premises after giving one month notice to the lessor.</li>
 
-  <p>And whereas the lessor or his subordinates or agents is at full liberty to inspect the rented premises at any reasonable hours.</p>
+    <li>And whereas the lessor or his subordinates or agents is at full liberty to inspect the rented premises at any reasonable hours.</li>
+  </ol>
 
   <h2>SCHEDULE</h2>
 
-  <p>The premises situated at ${esc(f.propertyName)} at apartment No ${esc(f.unitDesignation)}, at ${esc(f.scheduleAddress)} accommodation consisting of:- One room, Drawing, Dining, Kitchen with One common bath and lavatory, water and electricity facility, RCC roofed building${f.floor ? ` in ${esc(f.floor)}` : ""} with fittings, furniture and fixtures as follows:-</p>
+  <p>The premises situated at ${esc(f.propertyName)} at apartment No ${esc(f.unitDesignation)}, at ${esc(f.scheduleAddress)}, accommodation consisting of:- ${esc(f.scheduleAccommodation)}, water and electricity facility, RCC roofed building${f.floor ? ` in the ${esc(f.floor)}` : ""} with fittings, furniture and fixtures as follows:-</p>
 
-  <p class="pre">${fittingsHtml}</p>
+  <ol class="fittings">${fittingsItems}</ol>
 
   <p>IN WITNESS WHEREOF the above-mentioned, Lessor and Lessee has fixed their respective signatures to this agreement on the day, month and year first above written.</p>
 
-  <div class="sig">
-    <div>
-      <p>WITNESSES:-</p>
-      <p>1.</p>
-      <p>2.</p>
-    </div>
-  </div>
+  <p><u>WITNESSES:-</u></p>
 
-  <div class="sig">
-    <div><b>LESSOR</b><br/>(${esc(f.lessorSignName)})</div>
-    <div style="text-align:right;"><b>LESSEE/TENANT</b><br/>(${esc(f.lesseeSignName || f.lesseeName)})</div>
-  </div>
+  <table class="sig">
+    <tr>
+      <td>1. ( ${esc(f.witness1Name)} )<br/>${nl2br(f.witness1Address)}</td>
+      <td class="right">(${esc(f.lessorSignName)})<br/>LESSOR</td>
+    </tr>
+    <tr>
+      <td>2. ( ${esc(f.witness2Name)} )<br/>${nl2br(f.witness2Address)}</td>
+      <td class="right">( ${esc(f.lesseeSignName || f.lesseeName)} )<br/>LESSEE</td>
+    </tr>
+  </table>
 </body>
 </html>`;
 }
@@ -4092,9 +4112,15 @@ function LeaseGenerator({ tenants, buildings }) {
           }}
         >
           <Field label="Lessor name" value={f.lessorName} onChange={set("lessorName")} />
-          <Field label="Lessor signature name" value={f.lessorSignName} onChange={set("lessorSignName")} />
         </div>
-        <Field label="Lessor address" value={f.lessorAddress} onChange={set("lessorAddress")} />
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>Lessor address</label>
+          <textarea
+            value={f.lessorAddress}
+            onChange={(e) => set("lessorAddress")(e.target.value)}
+            style={{ ...inputStyle, minHeight: 70, fontFamily: "inherit", resize: "vertical" }}
+          />
+        </div>
       </Card>
 
       <Card>
@@ -4111,13 +4137,20 @@ function LeaseGenerator({ tenants, buildings }) {
           <Field label="S/o, D/o, W/o" value={f.lesseeGuardian} onChange={set("lesseeGuardian")} />
           <Field label="Lessee signature name" value={f.lesseeSignName} onChange={set("lesseeSignName")} />
         </div>
-        <Field label="Lessee permanent address" value={f.lesseeAddress} onChange={set("lesseeAddress")} />
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>Lessee permanent address</label>
+          <textarea
+            value={f.lesseeAddress}
+            onChange={(e) => set("lesseeAddress")(e.target.value)}
+            style={{ ...inputStyle, minHeight: 70, fontFamily: "inherit", resize: "vertical" }}
+          />
+        </div>
       </Card>
 
       <Card>
         <h3 style={{ marginTop: 0 }}>Premises &amp; Rent</h3>
-        <Field label="Owner's premises address" value={f.premisesAddress} onChange={set("premisesAddress")} />
-        <Field label="Accommodation description" value={f.accommodation} onChange={set("accommodation")} />
+        <Field label="Owner's premises address (property location)" value={f.premisesAddress} onChange={set("premisesAddress")} />
+        <Field label="Accommodation (e.g. Two rooms and Two bathroom...)" value={f.accommodation} onChange={set("accommodation")} />
         <div
           style={{
             display: "grid",
@@ -4158,6 +4191,7 @@ function LeaseGenerator({ tenants, buildings }) {
           <Field label="Floor" value={f.floor} onChange={set("floor")} placeholder="e.g. third floor" />
         </div>
         <Field label="Schedule address" value={f.scheduleAddress} onChange={set("scheduleAddress")} />
+        <Field label="Schedule accommodation (e.g. Two rooms, Drawing, Dining...)" value={f.scheduleAccommodation} onChange={set("scheduleAccommodation")} />
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Fittings &amp; fixtures (one per line)</label>
           <textarea
@@ -4165,6 +4199,37 @@ function LeaseGenerator({ tenants, buildings }) {
             onChange={(e) => set("fittings")(e.target.value)}
             style={{ ...inputStyle, minHeight: 110, fontFamily: "inherit", resize: "vertical" }}
           />
+        </div>
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>Witnesses &amp; Signatures</h3>
+        <Field label="Lessor signature name" value={f.lessorSignName} onChange={set("lessorSignName")} />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: "0 18px"
+          }}
+        >
+          <Field label="Witness 1 name" value={f.witness1Name} onChange={set("witness1Name")} />
+          <Field label="Witness 2 name" value={f.witness2Name} onChange={set("witness2Name")} />
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Witness 1 address</label>
+            <textarea
+              value={f.witness1Address}
+              onChange={(e) => set("witness1Address")(e.target.value)}
+              style={{ ...inputStyle, minHeight: 60, fontFamily: "inherit", resize: "vertical" }}
+            />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Witness 2 address</label>
+            <textarea
+              value={f.witness2Address}
+              onChange={(e) => set("witness2Address")(e.target.value)}
+              style={{ ...inputStyle, minHeight: 60, fontFamily: "inherit", resize: "vertical" }}
+            />
+          </div>
         </div>
       </Card>
 

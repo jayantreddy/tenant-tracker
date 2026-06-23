@@ -834,6 +834,25 @@ function ChangePasswordModal({ user, onClose }) {
   );
 }
 
+function useIsMobile(breakpoint = 760) {
+  const getMatch = () =>
+    typeof window !== "undefined" && window.innerWidth <= breakpoint;
+  const [isMobile, setIsMobile] = useState(getMatch);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(getMatch());
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 function Dashboard({ currentUser, onLogout }) {
   const [tenants, setTenants] = useStoredState("manne_tenants_v2", generateTenants());
   const [payments, setPayments] = useStoredState("manne_payments_v2", {});
@@ -845,6 +864,8 @@ function Dashboard({ currentUser, onLogout }) {
   const [propertyDocs, setPropertyDocs] = useState({});
   const [tenantDocs, setTenantDocs] = useState({});
   const [view, setView] = useState("dashboard");
+  const isMobile = useIsMobile();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
   const [yearlyReportYear, setYearlyReportYear] = useState(CURRENT_YEAR);
@@ -1354,7 +1375,8 @@ function Dashboard({ currentUser, onLogout }) {
         color: COLORS.text,
         fontFamily:
           "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
-        display: "flex"
+        display: "flex",
+        flexDirection: isMobile ? "column" : "row"
       }}
     >
       {showPassword && (
@@ -1402,19 +1424,26 @@ function Dashboard({ currentUser, onLogout }) {
 
       <aside
         style={{
-          width: 248,
-          minHeight: "100vh",
+          width: isMobile ? "100%" : 248,
+          minHeight: isMobile ? "auto" : "100vh",
           background: `linear-gradient(180deg, ${COLORS.sidebar}, ${COLORS.sidebar2})`,
           color: "#FFFFFF",
           display: "flex",
           flexDirection: "column",
-          flexShrink: 0
+          flexShrink: 0,
+          position: isMobile ? "sticky" : "static",
+          top: 0,
+          zIndex: 50
         }}
       >
         <div
           style={{
-            padding: "26px 24px",
-            borderBottom: "1px solid rgba(255,255,255,.08)"
+            padding: isMobile ? "16px 18px" : "26px 24px",
+            borderBottom: "1px solid rgba(255,255,255,.08)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1440,13 +1469,42 @@ function Dashboard({ currentUser, onLogout }) {
               </div>
             </div>
           </div>
+          {isMobile && (
+            <button
+              onClick={() => setMobileNavOpen((open) => !open)}
+              aria-label="Toggle menu"
+              style={{
+                width: 44,
+                height: 44,
+                flexShrink: 0,
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,.14)",
+                background: "rgba(255,255,255,.08)",
+                color: "#FFFFFF",
+                fontSize: 20,
+                lineHeight: 1,
+                cursor: "pointer"
+              }}
+            >
+              {mobileNavOpen ? "✕" : "☰"}
+            </button>
+          )}
         </div>
 
-        <nav style={{ padding: "14px 10px", flex: 1 }}>
+        <nav
+          style={{
+            padding: "14px 10px",
+            flex: isMobile ? "none" : 1,
+            display: isMobile && !mobileNavOpen ? "none" : "block"
+          }}
+        >
           {navItems.map(([key, label]) => (
             <button
               key={key}
-              onClick={() => setView(key)}
+              onClick={() => {
+                setView(key);
+                setMobileNavOpen(false);
+              }}
               style={{
                 width: "100%",
                 display: "flex",
@@ -1472,7 +1530,8 @@ function Dashboard({ currentUser, onLogout }) {
         <div
           style={{
             padding: 20,
-            borderTop: "1px solid rgba(255,255,255,.08)"
+            borderTop: "1px solid rgba(255,255,255,.08)",
+            display: isMobile && !mobileNavOpen ? "none" : "block"
           }}
         >
           <div
@@ -1565,7 +1624,7 @@ function Dashboard({ currentUser, onLogout }) {
           style={{
             background: "#FFFFFF",
             borderBottom: `1px solid ${COLORS.border}`,
-            padding: "20px 34px",
+            padding: isMobile ? "16px 18px" : "20px 34px",
             display: "flex",
             justifyContent: "space-between",
             gap: 16,
@@ -1574,7 +1633,7 @@ function Dashboard({ currentUser, onLogout }) {
           }}
         >
           <div>
-            <div style={{ fontSize: 24, fontWeight: 950 }}>
+            <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 950 }}>
               {navItems.find((item) => item[0] === view)?.[1]}
             </div>
             <div style={{ color: COLORS.muted, fontSize: 14, marginTop: 4 }}>
@@ -1630,7 +1689,7 @@ function Dashboard({ currentUser, onLogout }) {
           </div>
         </header>
 
-        <section style={{ padding: "30px 34px", maxWidth: 1220 }}>
+        <section style={{ padding: isMobile ? "18px 16px" : "30px 34px", maxWidth: 1220 }}>
           {view === "dashboard" && (
             <>
               {currencySummaries.map((summary) => (
@@ -2566,7 +2625,7 @@ function Dashboard({ currentUser, onLogout }) {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.4fr 1.4fr 1.4fr 2fr 1fr",
+                    gridTemplateColumns: isMobile ? "1fr" : "1.4fr 1.4fr 1.4fr 2fr 1fr",
                     gap: 10
                   }}
                 >
@@ -2844,7 +2903,7 @@ function Dashboard({ currentUser, onLogout }) {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.5fr 1.5fr 2fr 1fr",
+                    gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1.5fr 2fr 1fr",
                     gap: 10
                   }}
                 >
@@ -3086,7 +3145,7 @@ function Dashboard({ currentUser, onLogout }) {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.4fr 1.3fr 1.5fr 1fr",
+                    gridTemplateColumns: isMobile ? "1fr" : "1.4fr 1.3fr 1.5fr 1fr",
                     gap: 10
                   }}
                 >
@@ -3154,7 +3213,7 @@ function Dashboard({ currentUser, onLogout }) {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                    gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr",
                     gap: 10,
                     marginTop: 12
                   }}

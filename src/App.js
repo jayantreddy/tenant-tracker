@@ -145,6 +145,52 @@ function monthIndex(month, year) {
   return year * 12 + month;
 }
 
+function numberToWords(num) {
+  num = Math.round(Number(num) || 0);
+  if (num === 0) return "Zero";
+
+  const ones = [
+    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
+    "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+    "Sixteen", "Seventeen", "Eighteen", "Nineteen"
+  ];
+  const tens = [
+    "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy",
+    "Eighty", "Ninety"
+  ];
+
+  function twoDigits(n) {
+    if (n < 20) return ones[n];
+    return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
+  }
+
+  function threeDigits(n) {
+    const hundred = Math.floor(n / 100);
+    const rest = n % 100;
+    let out = "";
+    if (hundred) out += ones[hundred] + " Hundred";
+    if (hundred && rest) out += " ";
+    if (rest) out += twoDigits(rest);
+    return out;
+  }
+
+  let words = "";
+  const crore = Math.floor(num / 10000000);
+  num %= 10000000;
+  const lakh = Math.floor(num / 100000);
+  num %= 100000;
+  const thousand = Math.floor(num / 1000);
+  num %= 1000;
+  const hundred = num;
+
+  if (crore) words += threeDigits(crore) + " Crore ";
+  if (lakh) words += threeDigits(lakh) + " Lakh ";
+  if (thousand) words += threeDigits(thousand) + " Thousand ";
+  if (hundred) words += threeDigits(hundred);
+
+  return words.trim();
+}
+
 function getCurrency(code) {
   return CURRENCIES.find((currency) => currency.code === code) || CURRENCIES[0];
 }
@@ -1295,6 +1341,7 @@ function Dashboard({ currentUser, onLogout }) {
     ["repairs", "Repairs"],
     ["maintenance", "Maintenance"],
     ["recurring", "Recurring"],
+    ["lease", "Lease Generator"],
     ["yearly", "Yearly Report"],
     ["documents", "Documents"]
   ];
@@ -2500,6 +2547,13 @@ function Dashboard({ currentUser, onLogout }) {
                 </Card>
               )}
             </>
+          )}
+
+          {view === "lease" && (
+            <LeaseGenerator
+              tenants={tenants}
+              buildings={buildings}
+            />
           )}
 
           {view === "repairs" && (
@@ -3783,6 +3837,357 @@ const tdStyle = {
   padding: "11px 8px",
   whiteSpace: "nowrap"
 };
+
+function ordinalDay(n) {
+  const num = Number(n) || 0;
+  const s = ["th", "st", "nd", "rd"];
+  const v = num % 100;
+  return num + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function formatLeaseDate(iso) {
+  if (!iso) return { day: "____", month: "__________", year: "____", full: "____" };
+  const parts = String(iso).split("-");
+  if (parts.length !== 3) return { day: "____", month: "__________", year: "____", full: iso };
+  const months = [
+    "January", "February", "March", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December"
+  ];
+  const year = parts[0];
+  const monthName = months[Number(parts[1]) - 1] || "";
+  const day = ordinalDay(Number(parts[2]));
+  return { day, month: monthName, year, full: `${day} day of ${monthName}, ${year}` };
+}
+
+const LEASE_DEFAULTS = {
+  place: "Bangalore",
+  agreementDate: "",
+  lessorName: "Gp Capt KK Reddy (Retd)",
+  lessorAddress:
+    "No 68, 5th Temple Road 15th Cross, Malleshwaram Bengaluru-560003",
+  lesseeName: "",
+  lesseeAge: "",
+  lesseeGuardian: "",
+  lesseeAddress: "",
+  premisesAddress:
+    "No.202, Balaji Layout, Byaderahalli, Magdi Road, Bengaluru-560091",
+  accommodation:
+    "One room and One bathroom, with all essential sanitary, electrical fittings, and furniture",
+  rent: "",
+  maintenance: "1250",
+  unitDesignation: "",
+  rentDueDay: "5",
+  leaseMonths: "11",
+  enhancePct: "5",
+  deposit: "",
+  propertyName: "",
+  scheduleAddress: "202, Balaji Layout, Byaderahalli, Bangalore-560091",
+  floor: "",
+  fittings: "Fan-Two\nTube light-Two\nGeyser-one\nWood work - Built in cupboards in the room with locker facility and Kitchen. Tv stand in the drawing room. One wooden Shoe rack.",
+  lessorSignName: "KK Reddy",
+  lesseeSignName: ""
+};
+
+function buildLeaseHTML(f) {
+  const d = formatLeaseDate(f.agreementDate);
+  const rentNum = Number(f.rent) || 0;
+  const depositNum = Number(f.deposit) || 0;
+  const maintNum = Number(f.maintenance) || 0;
+  const rentWords = numberToWords(rentNum);
+  const depositWords = numberToWords(depositNum);
+  const maintWords = numberToWords(maintNum);
+  const esc = (s) =>
+    String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const fittingsHtml = esc(f.fittings).replace(/\n/g, "<br/>");
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Rental Agreement - ${esc(f.lesseeName)}</title>
+<style>
+  @page { size: A4; margin: 22mm 20mm; }
+  body { font-family: "Times New Roman", Georgia, serif; font-size: 12.5pt; line-height: 1.6; color: #000; }
+  h1 { text-align: center; font-size: 16pt; text-decoration: underline; margin-bottom: 26px; }
+  h2 { text-align: center; font-size: 13pt; text-decoration: underline; margin: 26px 0 10px; }
+  p { margin: 0 0 12px; text-align: justify; }
+  .sig { margin-top: 70px; display: flex; justify-content: space-between; }
+  .sig div { width: 45%; }
+  .center { text-align: center; }
+  .pre { white-space: pre-line; }
+</style>
+</head>
+<body>
+  <h1>RENTAL AGREEMENT</h1>
+
+  <p>This agreement is made and executed at ${esc(f.place)} on this ${d.full}, by and between:-</p>
+
+  <p><b>${esc(f.lessorName)}</b>, ${esc(f.lessorAddress)}<br/>
+  Herein referred to as &lsquo;LESSOR&rsquo; of the first part and in favour of</p>
+
+  <p><b>${esc(f.lesseeName)}</b>${f.lesseeAge ? `&nbsp;&nbsp;&nbsp;Aged about ${esc(f.lesseeAge)} Yrs` : ""}<br/>
+  ${f.lesseeGuardian ? `S/o ${esc(f.lesseeGuardian)}<br/>` : ""}
+  ${esc(f.lesseeAddress)}<br/>
+  Herein after called the &lsquo;LESSEE/TENANT&rsquo; of the other part; witnessed as follows:-</p>
+
+  <p>Whereas the terms lessor and lessee shall mean and include their respective heirs, legal representatives, administrators, and assigns, etc.</p>
+
+  <p>And whereas the lessor is the sole and absolute owner of the premises situated at ${esc(f.premisesAddress)}, and whereas the lessee has approached with the lessor to let out the scheduled premises on rental basis, and the lessor agrees to let-out the same under the following terms and conditions:-</p>
+
+  <p>Whereas the lessor agrees to let-out the schedule premises consisting of ${esc(f.accommodation)} provided in the premises for a monthly rent of <b>Rs ${rentNum.toLocaleString("en-IN")}/-</b> (Rupees ${rentWords} only) per month including maintenance charges of Rs ${maintNum.toLocaleString("en-IN")}/-${maintNum ? ` (Rupees ${maintWords} only)` : ""}, and the lessee shall agree to pay the same every month. The apartment is designated as No. ${esc(f.unitDesignation)}.</p>
+
+  <p>Whereas the lessee agrees to pay the monthly rent by on or before ${ordinalDay(f.rentDueDay)} of every English calendar month.</p>
+
+  <p>Whereas the lessee shall use the scheduled premises for residential purpose only and should not use for any illegal or immoral purposes.</p>
+
+  <p>The lease will be for a period of ${esc(f.leaseMonths)} months from the date of this agreement, but it can be extended by mutual consent. The rent shall be enhanced once every ${esc(f.leaseMonths)} months @ ${esc(f.enhancePct)}% over the existing rent.</p>
+
+  <p>Whereas the lessee should not sublet or underlet the schedule premises to any other person without written consent from the lessor. Whereas the lessee shall keep the schedule premises in good condition without any damages to the fittings and fixtures, get the maintenance done as and when required at his own expense, maintain the house, walls neat and clean, if the conditions are not met by the Lessee, then a suitable amount according to the damage will be deducted from the security deposit.</p>
+
+  <p>Whereas the lessee has paid a sum of <b>Rs.${depositNum.toLocaleString("en-IN")}/-</b> (Rupees ${depositWords} only) towards security deposit. Thus, the lessor has received and acknowledges the receipt of the same. This amount shall not carry any interest and the same will be refundable to the lessee at the time of vacating the schedule premises.</p>
+
+  <p>And whereas the lessee hereby agrees to pay the electricity charges to the concerned authorities without arrears during this tenancy period. The water charges and common (BWSSB) and common electricity bill (water pumping charges) to be shared along with other tenants included in the maintenance charges subject to change with increasing water charges. In case of sourcing water tanker due to shortage of water will be charged extra. Painting to be done while vacating the premises or one month rent shall be deducted for the same, from the security deposit, at the time of vacating. The Lessee shall handover the last bills duly paid till the last day to the Lessor.</p>
+
+  <p>The lessee shall vacate the premises after giving a one month written notice from the lessor. Similarly, the lessee can vacate the premises after giving one month notice to the lessor.</p>
+
+  <p>And whereas the lessor or his subordinates or agents is at full liberty to inspect the rented premises at any reasonable hours.</p>
+
+  <h2>SCHEDULE</h2>
+
+  <p>The premises situated at ${esc(f.propertyName)} at apartment No ${esc(f.unitDesignation)}, at ${esc(f.scheduleAddress)} accommodation consisting of:- One room, Drawing, Dining, Kitchen with One common bath and lavatory, water and electricity facility, RCC roofed building${f.floor ? ` in ${esc(f.floor)}` : ""} with fittings, furniture and fixtures as follows:-</p>
+
+  <p class="pre">${fittingsHtml}</p>
+
+  <p>IN WITNESS WHEREOF the above-mentioned, Lessor and Lessee has fixed their respective signatures to this agreement on the day, month and year first above written.</p>
+
+  <div class="sig">
+    <div>
+      <p>WITNESSES:-</p>
+      <p>1.</p>
+      <p>2.</p>
+    </div>
+  </div>
+
+  <div class="sig">
+    <div><b>LESSOR</b><br/>(${esc(f.lessorSignName)})</div>
+    <div style="text-align:right;"><b>LESSEE/TENANT</b><br/>(${esc(f.lesseeSignName || f.lesseeName)})</div>
+  </div>
+</body>
+</html>`;
+}
+
+function LeaseGenerator({ tenants, buildings }) {
+  const [f, setF] = useState(LEASE_DEFAULTS);
+  const [selectedTenant, setSelectedTenant] = useState("");
+
+  const set = (key) => (value) => setF((prev) => ({ ...prev, [key]: value }));
+
+  const autofillFromTenant = (tenantId) => {
+    setSelectedTenant(tenantId);
+    if (!tenantId) return;
+    const t = tenants.find((x) => String(x.id) === String(tenantId));
+    if (!t) return;
+    const b = buildings.find((x) => String(x.id) === String(t.buildingId));
+    setF((prev) => ({
+      ...prev,
+      lesseeName: t.name || "",
+      lesseeSignName: t.name || "",
+      unitDesignation: t.unit || "",
+      rent: t.rent != null ? String(t.rent) : "",
+      propertyName: b ? b.name || "" : prev.propertyName,
+      premisesAddress: b && b.address ? b.address : prev.premisesAddress,
+      scheduleAddress: b && b.address ? b.address : prev.scheduleAddress
+    }));
+  };
+
+  const openPrint = () => {
+    const html = buildLeaseHTML(f);
+    const win = window.open("", "_blank");
+    if (!win) {
+      alert("Please allow pop-ups to generate the agreement.");
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 400);
+  };
+
+  const downloadWord = () => {
+    const html = buildLeaseHTML(f);
+    const blob = new Blob([html], { type: "application/msword" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeName = (f.lesseeName || "tenant").replace(/[^a-z0-9]+/gi, "_");
+    a.download = `Rental_Agreement_${safeName}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const resetForm = () => {
+    setF(LEASE_DEFAULTS);
+    setSelectedTenant("");
+  };
+
+  return (
+    <>
+      <Card>
+        <div style={{ marginBottom: 6 }}>
+          <h2 style={{ margin: "0 0 6px", fontSize: 20 }}>Lease Generator</h2>
+          <p style={{ margin: 0, color: COLORS.muted, fontSize: 13 }}>
+            Pick an existing tenant to auto-fill, edit any blanks, then generate
+            a printable PDF or download a Word document.
+          </p>
+        </div>
+
+        <SelectField
+          label="Auto-fill from existing tenant (optional)"
+          value={selectedTenant}
+          onChange={autofillFromTenant}
+        >
+          <option value="">-- Select a tenant --</option>
+          {tenants
+            .filter((t) => !t.vacant)
+            .map((t) => {
+              const b = buildings.find(
+                (x) => String(x.id) === String(t.buildingId)
+              );
+              return (
+                <option key={t.id} value={t.id}>
+                  {(b ? b.name + " - " : "") + (t.unit || "") + " - " + (t.name || "")}
+                </option>
+              );
+            })}
+        </SelectField>
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>Agreement Details</h3>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: "0 18px"
+          }}
+        >
+          <Field label="Place of execution" value={f.place} onChange={set("place")} />
+          <Field label="Agreement date" type="date" value={f.agreementDate} onChange={set("agreementDate")} />
+        </div>
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>Lessor (Owner)</h3>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: "0 18px"
+          }}
+        >
+          <Field label="Lessor name" value={f.lessorName} onChange={set("lessorName")} />
+          <Field label="Lessor signature name" value={f.lessorSignName} onChange={set("lessorSignName")} />
+        </div>
+        <Field label="Lessor address" value={f.lessorAddress} onChange={set("lessorAddress")} />
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>Lessee (Tenant)</h3>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: "0 18px"
+          }}
+        >
+          <Field label="Lessee name" value={f.lesseeName} onChange={set("lesseeName")} />
+          <Field label="Age (years)" value={f.lesseeAge} onChange={set("lesseeAge")} />
+          <Field label="S/o, D/o, W/o" value={f.lesseeGuardian} onChange={set("lesseeGuardian")} />
+          <Field label="Lessee signature name" value={f.lesseeSignName} onChange={set("lesseeSignName")} />
+        </div>
+        <Field label="Lessee permanent address" value={f.lesseeAddress} onChange={set("lesseeAddress")} />
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>Premises &amp; Rent</h3>
+        <Field label="Owner's premises address" value={f.premisesAddress} onChange={set("premisesAddress")} />
+        <Field label="Accommodation description" value={f.accommodation} onChange={set("accommodation")} />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: "0 18px"
+          }}
+        >
+          <Field label="Monthly rent (Rs)" type="number" value={f.rent} onChange={set("rent")} />
+          <Field label="Maintenance (Rs, included)" type="number" value={f.maintenance} onChange={set("maintenance")} />
+          <Field label="Security deposit (Rs)" type="number" value={f.deposit} onChange={set("deposit")} />
+          <Field label="Unit / apartment no" value={f.unitDesignation} onChange={set("unitDesignation")} />
+          <Field label="Rent due day of month" type="number" value={f.rentDueDay} onChange={set("rentDueDay")} />
+          <Field label="Lease period (months)" type="number" value={f.leaseMonths} onChange={set("leaseMonths")} />
+          <Field label="Rent enhancement (%)" type="number" value={f.enhancePct} onChange={set("enhancePct")} />
+        </div>
+        {f.rent ? (
+          <p style={{ margin: "4px 0 0", color: COLORS.muted, fontSize: 12 }}>
+            Rent in words: Rupees {numberToWords(f.rent)} only
+          </p>
+        ) : null}
+        {f.deposit ? (
+          <p style={{ margin: "2px 0 0", color: COLORS.muted, fontSize: 12 }}>
+            Deposit in words: Rupees {numberToWords(f.deposit)} only
+          </p>
+        ) : null}
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>Schedule</h3>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: "0 18px"
+          }}
+        >
+          <Field label="Property name" value={f.propertyName} onChange={set("propertyName")} />
+          <Field label="Floor" value={f.floor} onChange={set("floor")} placeholder="e.g. third floor" />
+        </div>
+        <Field label="Schedule address" value={f.scheduleAddress} onChange={set("scheduleAddress")} />
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>Fittings &amp; fixtures (one per line)</label>
+          <textarea
+            value={f.fittings}
+            onChange={(e) => set("fittings")(e.target.value)}
+            style={{ ...inputStyle, minHeight: 110, fontFamily: "inherit", resize: "vertical" }}
+          />
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button onClick={openPrint} style={buttonStyle("primary")}>
+            Generate / Print (PDF)
+          </button>
+          <button onClick={downloadWord} style={buttonStyle()}>
+            Download as Word
+          </button>
+          <button onClick={resetForm} style={buttonStyle("danger")}>
+            Reset
+          </button>
+        </div>
+        <p style={{ margin: "12px 0 0", color: COLORS.muted, fontSize: 12 }}>
+          Tip: in the print dialog choose &ldquo;Save as PDF&rdquo; as the
+          destination to get a PDF copy.
+        </p>
+      </Card>
+    </>
+  );
+}
 
 function TenantModal({
   tenant,

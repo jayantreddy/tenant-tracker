@@ -169,7 +169,7 @@ function numberToWords(num) {
     const rest = n % 100;
     let out = "";
     if (hundred) out += ones[hundred] + " Hundred";
-    if (hundred && rest) out += " ";
+    if (hundred && rest) out += " and ";
     if (rest) out += twoDigits(rest);
     return out;
   }
@@ -3905,17 +3905,30 @@ function ordinalDay(n) {
 }
 
 function formatLeaseDate(iso) {
-  if (!iso) return { day: "____", month: "__________", year: "____", full: "____" };
+  if (!iso) return { day: "____", month: "__________", monthShort: "____", year: "____", full: "____", fullShort: "____" };
   const parts = String(iso).split("-");
-  if (parts.length !== 3) return { day: "____", month: "__________", year: "____", full: iso };
+  if (parts.length !== 3) return { day: "____", month: "__________", monthShort: "____", year: "____", full: iso, fullShort: iso };
   const months = [
     "January", "February", "March", "April", "May", "June", "July",
     "August", "September", "October", "November", "December"
   ];
+  const monthsShort = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul",
+    "Aug", "Sep", "Oct", "Nov", "Dec"
+  ];
   const year = parts[0];
-  const monthName = months[Number(parts[1]) - 1] || "";
+  const mIdx = Number(parts[1]) - 1;
+  const monthName = months[mIdx] || "";
+  const monthShort = monthsShort[mIdx] || "";
   const day = ordinalDay(Number(parts[2]));
-  return { day, month: monthName, year, full: `${day} day of ${monthName}, ${year}` };
+  return {
+    day,
+    month: monthName,
+    monthShort,
+    year,
+    full: `${day} day of ${monthName}, ${year}`,
+    fullShort: `${day} day of ${monthShort}, ${year}`
+  };
 }
 
 const LEASE_DEFAULTS = {
@@ -3951,7 +3964,8 @@ const LEASE_DEFAULTS = {
   witness1Address:
     "68, 5TH TEMPLE ROAD,15TH CROSS\nMALLESHWARAM, BENGALURU-560003",
   witness2Name: "SUMA SANJEEV",
-  witness2Address: "209, BALAJI LAYOUT, BADERAHALLI\nBENGALURU-56091"
+  witness2Address: "209, BALAJI LAYOUT, BADERAHALLI\nBENGALURU-56091",
+  topSpace: "230"
 };
 
 function buildLeaseHTML(f) {
@@ -3961,6 +3975,8 @@ function buildLeaseHTML(f) {
   const maintNum = Number(f.maintenance) || 0;
   const rentWords = numberToWords(rentNum);
   const depositWords = numberToWords(depositNum);
+  const topSpace = Number(f.topSpace);
+  const topMm = Number.isFinite(topSpace) ? topSpace : 230;
   const esc = (s) =>
     String(s == null ? "" : s)
       .replace(/&/g, "&amp;")
@@ -3975,85 +3991,96 @@ function buildLeaseHTML(f) {
     .map((line) => `<li>${esc(line)}</li>`)
     .join("");
 
+  const clauses1to7 = `
+    <li>Whereas the lessor agrees to let-out the schedule premises consisting of ${esc(f.accommodation)} provided in the premises for a monthly rent of <b>Rs ${rentNum.toLocaleString("en-IN")}/-</b> (Rupees ${rentWords} only) per month including maintenance charges of Rs ${maintNum.toLocaleString("en-IN")}/-, and the lessee shall agree to pay the same every month. The apartment is designated as No. ${esc(f.unitDesignation)}.</li>
+    <li>Whereas the lessee agrees to pay the monthly rent by on or before ${ordinalDay(f.rentDueDay)} of every English calendar month.</li>
+    <li>Whereas the lessee shall use the scheduled premises for residential purpose only and should not use for any illegal or immoral purposes.</li>
+    <li>The lease will be for a period of ${esc(f.leaseMonths)} (Eleven) months from the date of this agreement, but it can be extended by mutual consent. The rent shall be enhanced once every ${esc(f.leaseMonths)} months@ ${esc(f.enhancePct)}% over the existing rent.</li>
+    <li>Whereas the lessee should not sublet or underlet the schedule premises to any other person without written consent from the lessor. Whereas the lessee shall keep the schedule premises in good condition without any damages to the fittings and fixtures, get the maintenance done as and when required at his own expense, maintain the house, walls neat and clean, if the conditions are not met by the Lessee, then a suitable amount according to the damage will be deducted from the security deposit.</li>
+    <li>Whereas the lessee has paid a sum of <b>Rs.${depositNum.toLocaleString("en-IN")}/-</b> (Rupees ${depositWords} only) towards security deposit. Thus, the lessor has received and acknowledges the receipt of the same. This amount shall not carry any interest and the same will be refundable to the lessee at the time of vacating the scheduled premises.</li>
+    <li>And whereas the lessee hereby agrees to pay the electricity charges to the concerned authorities without arrears during this tenancy period. The water charges and common (BWSSB) and common electricity bill (water pumping charges) to be shared along with other tenants included in the maintenance charges subject to change with increasing water/Electricity charges. In case of water shortage or no supply from BWSSB, additional expenditure to procure water from tankers is not catered in the maintenance charges, this has to be paid additionally pro rata with other tenants of the building. Painting to be done while vacating the premises the lessee shall hand over the house in good order and ensure electrical fittings in working condition, in case of unserviceability an appropriate amount will be liable to be deducted from the Security deposit in addition one month rent which shall be deducted for the painting from the security deposit, at the time of vacating. The Lessee shall handover the last bills duly paid till the last day to the Lessor.</li>`;
+
+  const clauses8to9 = `
+    <li>The lessee shall vacate the premises after giving a one month written notice from the lessor. Similarly, the lessee can vacate the premises after giving one month notice to the lessor.</li>
+    <li>And whereas the lessor or his subordinates or agents is at full liberty to inspect the rented premises at any reasonable hours.</li>`;
+
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
 <title>Rental Agreement - ${esc(f.lesseeName)}</title>
 <style>
-  @page { size: A4; margin: 20mm 18mm; }
-  body { font-family: "Times New Roman", Georgia, serif; font-size: 12pt; line-height: 1.55; color: #000; }
-  h1 { text-align: center; font-size: 15pt; font-weight: bold; text-decoration: underline; margin: 0 0 22px; }
-  h2 { text-align: center; font-size: 13pt; font-weight: bold; text-decoration: underline; margin: 24px 0 12px; }
-  p { margin: 0 0 12px; text-align: justify; }
-  .party { text-align: center; margin: 0 0 12px; }
-  ol.clauses { padding-left: 26px; margin: 0 0 12px; }
-  ol.clauses > li { margin-bottom: 11px; text-align: justify; }
-  ol.fittings { padding-left: 26px; margin: 4px 0 12px; }
-  ol.fittings > li { margin-bottom: 4px; }
-  table.sig { width: 100%; margin-top: 56px; border-collapse: collapse; page-break-inside: avoid; }
-  table.sig td { vertical-align: top; padding: 0 0 60px; font-size: 11.5pt; }
-  table.sig td.right { text-align: left; width: 38%; }
-  .pre { white-space: pre-line; }
+  @page { size: A4; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "Times New Roman", Georgia, serif; font-size: 10pt; line-height: 1.22; color: #000; }
+  * { box-sizing: border-box; }
+  .sheet {
+    position: relative;
+    width: 210mm;
+    min-height: 296mm;
+    padding: 12mm 23mm 14mm;
+    page-break-after: always;
+  }
+  .sheet:last-child { page-break-after: auto; }
+  .sheet.first { padding-top: 0; }
+  .pageno { position: absolute; top: 8mm; left: 21mm; font-size: 10pt; }
+  .topspace { height: ${topMm}mm; }
+  h1 { text-align: center; font-size: 12pt; font-weight: bold; text-decoration: underline; margin: 0 0 6mm; }
+  h2 { text-align: center; font-size: 11pt; font-weight: bold; text-decoration: underline; margin: 7mm 0 5mm; }
+  p { margin: 0 0 3.2mm; text-align: justify; }
+  .party { text-align: center; margin: 0 0 3.2mm; }
+  ol.clauses { margin: 0 0 3mm; padding-left: 13mm; }
+  ol.clauses > li { margin-bottom: 3mm; text-align: justify; padding-left: 3mm; }
+  ol.fittings { margin: 2mm 0 3mm; padding-left: 13mm; }
+  ol.fittings > li { margin-bottom: 1.5mm; padding-left: 3mm; }
+  p.witnesses { margin: 7mm 0 0; text-decoration: underline; }
+  table.sig { width: 100%; border-collapse: collapse; margin-top: 28mm; }
+  table.sig td { vertical-align: top; padding: 0 0 30mm; }
+  table.sig td.right { text-align: left; width: 42%; padding-left: 6mm; }
+  @media screen {
+    body { background: #525659; }
+    .sheet { background: #fff; margin: 8mm auto; box-shadow: 0 0 8px rgba(0,0,0,0.45); }
+  }
 </style>
 </head>
 <body>
-  <h1>RENTAL AGREEMENT</h1>
+  <div class="sheet first">
+    <div class="pageno">1</div>
+    <div class="topspace"></div>
+    <h1>RENTAL AGREEMENT</h1>
+    <p>This agreement is made and executed at ${esc(f.place)} on this ${d.fullShort}, by and between:-</p>
+    <p class="party"><b>${esc(f.lessorName)}</b><br/>${nl2br(f.lessorAddress)}</p>
+  </div>
 
-  <p>This agreement is made and executed at ${esc(f.place)} on this ${d.full}, by and between:-</p>
+  <div class="sheet">
+    <div class="pageno">2</div>
+    <p>Herein referred to as &lsquo;LESSOR&rsquo; of the first part and in favour of</p>
+    <p class="party"><b>${esc(f.lesseeName)}</b>${f.lesseeAge ? `, Aged about ${esc(f.lesseeAge)} Yrs` : ""}${f.lesseeGuardian ? `<br/>S/o ${esc(f.lesseeGuardian)}` : ""}<br/>${nl2br(f.lesseeAddress)}</p>
+    <p>Hereinafter called the &lsquo;LESSEE/TENANT&rsquo; of the other part; witnessed as follows:-</p>
+    <p>Whereas the terms lessor and lessee shall mean and include their respective heirs, legal representatives, administrators, and assigns, etc.</p>
+    <p>And whereas the lessor is the sole and absolute owner of the premises situated at ${esc(f.propertyName)}${f.premisesAddress ? `, ${esc(f.premisesAddress)}` : ""} and whereas the lessee has approached with the lessor to let out the scheduled premises apartment ${esc(f.unitDesignation)}, on rental basis, and the lessor agrees to let-out the same under the following terms and conditions: -</p>
+    <ol class="clauses">${clauses1to7}</ol>
+  </div>
 
-  <p class="party"><b>${esc(f.lessorName)}</b><br/>${nl2br(f.lessorAddress)}</p>
-
-  <p>Herein referred to as &lsquo;LESSOR&rsquo; of the first part and in favour of</p>
-
-  <p class="party"><b>${esc(f.lesseeName)}</b>${f.lesseeAge ? `, Aged about ${esc(f.lesseeAge)} Yrs` : ""}${f.lesseeGuardian ? `<br/>S/o ${esc(f.lesseeGuardian)}` : ""}<br/>${nl2br(f.lesseeAddress)}</p>
-
-  <p>Hereinafter called the &lsquo;LESSEE/TENANT&rsquo; of the other part; witnessed as follows:-</p>
-
-  <p>Whereas the terms lessor and lessee shall mean and include their respective heirs, legal representatives, administrators, and assigns, etc.</p>
-
-  <p>And whereas the lessor is the sole and absolute owner of the premises situated at ${esc(f.propertyName)}${f.premisesAddress ? `, ${esc(f.premisesAddress)}` : ""} and whereas the lessee has approached with the lessor to let out the scheduled premises apartment ${esc(f.unitDesignation)}, on rental basis, and the lessor agrees to let-out the same under the following terms and conditions: -</p>
-
-  <ol class="clauses">
-    <li>Whereas the lessor agrees to let-out the schedule premises consisting of ${esc(f.accommodation)} provided in the premises for a monthly rent of <b>Rs ${rentNum.toLocaleString("en-IN")}/-</b> (Rupees ${rentWords} Rupees only) per month including maintenance charges of Rs ${maintNum.toLocaleString("en-IN")}/-, and the lessee shall agree to pay the same every month. The apartment is designated as No. ${esc(f.unitDesignation)}.</li>
-
-    <li>Whereas the lessee agrees to pay the monthly rent by on or before ${ordinalDay(f.rentDueDay)} of every English calendar month.</li>
-
-    <li>Whereas the lessee shall use the scheduled premises for residential purpose only and should not use for any illegal or immoral purposes.</li>
-
-    <li>The lease will be for a period of ${esc(f.leaseMonths)} (Eleven) months from the date of this agreement, but it can be extended by mutual consent. The rent shall be enhanced once every ${esc(f.leaseMonths)} months@ ${esc(f.enhancePct)}% over the existing rent.</li>
-
-    <li>Whereas the lessee should not sublet or underlet the schedule premises to any other person without written consent from the lessor. Whereas the lessee shall keep the schedule premises in good condition without any damages to the fittings and fixtures, get the maintenance done as and when required at his own expense, maintain the house, walls neat and clean, if the conditions are not met by the Lessee, then a suitable amount according to the damage will be deducted from the security deposit.</li>
-
-    <li>Whereas the lessee has paid a sum of <b>Rs.${depositNum.toLocaleString("en-IN")}/-</b> (Rupees ${depositWords} only) towards security deposit. Thus, the lessor has received and acknowledges the receipt of the same. This amount shall not carry any interest and the same will be refundable to the lessee at the time of vacating the scheduled premises.</li>
-
-    <li>And whereas the lessee hereby agrees to pay the electricity charges to the concerned authorities without arrears during this tenancy period. The water charges and common (BWSSB) and common electricity bill (water pumping charges) to be shared along with other tenants included in the maintenance charges subject to change with increasing water/Electricity charges. In case of water shortage or no supply from BWSSB, additional expenditure to procure water from tankers is not catered in the maintenance charges, this has to be paid additionally pro rata with other tenants of the building. Painting to be done while vacating the premises the lessee shall hand over the house in good order and ensure electrical fittings in working condition, in case of unserviceability an appropriate amount will be liable to be deducted from the Security deposit in addition one month rent which shall be deducted for the painting from the security deposit, at the time of vacating. The Lessee shall handover the last bills duly paid till the last day to the Lessor.</li>
-
-    <li>The lessee shall vacate the premises after giving a one month written notice from the lessor. Similarly, the lessee can vacate the premises after giving one month notice to the lessor.</li>
-
-    <li>And whereas the lessor or his subordinates or agents is at full liberty to inspect the rented premises at any reasonable hours.</li>
-  </ol>
-
-  <h2>SCHEDULE</h2>
-
-  <p>The premises situated at ${esc(f.propertyName)} at apartment No ${esc(f.unitDesignation)}, at ${esc(f.scheduleAddress)}, accommodation consisting of:- ${esc(f.scheduleAccommodation)}, water and electricity facility, RCC roofed building${f.floor ? ` in the ${esc(f.floor)}` : ""} with fittings, furniture and fixtures as follows:-</p>
-
-  <ol class="fittings">${fittingsItems}</ol>
-
-  <p>IN WITNESS WHEREOF the above-mentioned, Lessor and Lessee has fixed their respective signatures to this agreement on the day, month and year first above written.</p>
-
-  <p><u>WITNESSES:-</u></p>
-
-  <table class="sig">
-    <tr>
-      <td>1. ( ${esc(f.witness1Name)} )<br/>${nl2br(f.witness1Address)}</td>
-      <td class="right">(${esc(f.lessorSignName)})<br/>LESSOR</td>
-    </tr>
-    <tr>
-      <td>2. ( ${esc(f.witness2Name)} )<br/>${nl2br(f.witness2Address)}</td>
-      <td class="right">( ${esc(f.lesseeSignName || f.lesseeName)} )<br/>LESSEE</td>
-    </tr>
-  </table>
+  <div class="sheet">
+    <div class="pageno">3</div>
+    <ol class="clauses" start="8">${clauses8to9}</ol>
+    <h2>SCHEDULE</h2>
+    <p>The premises situated at ${esc(f.propertyName)} at apartment No ${esc(f.unitDesignation)}, at ${esc(f.scheduleAddress)}, accommodation consisting of:- ${esc(f.scheduleAccommodation)}, water and electricity facility, RCC roofed building${f.floor ? ` in the ${esc(f.floor)}` : ""} with fittings, furniture and fixtures as follows:-</p>
+    <ol class="fittings">${fittingsItems}</ol>
+    <p>IN WITNESS WHEREOF the above-mentioned, Lessor and Lessee has fixed their respective signatures to this agreement on the day, month and year first above written.</p>
+    <p class="witnesses">WITNESSES:-</p>
+    <table class="sig">
+      <tr>
+        <td>1. ( ${esc(f.witness1Name)} )<br/>${nl2br(f.witness1Address)}</td>
+        <td class="right">(${esc(f.lessorSignName)})<br/>LESSOR</td>
+      </tr>
+      <tr>
+        <td>2. ( ${esc(f.witness2Name)} )<br/>${nl2br(f.witness2Address)}</td>
+        <td class="right">( ${esc(f.lesseeSignName || f.lesseeName)} )<br/>LESSEE</td>
+      </tr>
+    </table>
+  </div>
 </body>
 </html>`;
 }
@@ -4158,7 +4185,12 @@ function LeaseGenerator({ tenants, buildings }) {
         >
           <Field label="Place of execution" value={f.place} onChange={set("place")} />
           <Field label="Agreement date" type="date" value={f.agreementDate} onChange={set("agreementDate")} />
+          <Field label="Blank space above title on page 1 (mm)" type="number" value={f.topSpace} onChange={set("topSpace")} placeholder="230" />
         </div>
+        <p style={{ margin: "2px 0 0", color: COLORS.muted, fontSize: 12 }}>
+          Page 1 starts low so your pre-printed letterhead / stamp-paper matter fits on top.
+          Increase this number to push the text further down, decrease to move it up.
+        </p>
       </Card>
 
       <Card>
